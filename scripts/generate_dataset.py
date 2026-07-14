@@ -128,11 +128,21 @@ def write_bronze(df: pd.DataFrame, name: str, partition_cols: list[str] | None =
             for col, val in zip(partition_cols, keys):
                 sub_dir = sub_dir / f"{col}={val}"
             sub_dir.mkdir(parents=True, exist_ok=True)
+            # coerce_timestamps="us": pandas/pyarrow default to nanosecond
+            # Parquet timestamps for datetime64 columns (e.g. data_admissao),
+            # which Spark 3.5.x's Parquet reader rejects outright
+            # ("Illegal Parquet type: INT64 (TIMESTAMP(NANOS,false))").
+            # Microsecond precision is what Spark expects and is more than
+            # enough resolution for a hire date.
             group.drop(columns=partition_cols).to_parquet(
-                sub_dir / "part-000.parquet", index=False
+                sub_dir / "part-000.parquet", index=False,
+                coerce_timestamps="us", allow_truncated_timestamps=True,
             )
     else:
-        df.to_parquet(out_dir / "part-000.parquet", index=False)
+        df.to_parquet(
+            out_dir / "part-000.parquet", index=False,
+            coerce_timestamps="us", allow_truncated_timestamps=True,
+        )
     return out_dir
 
 
