@@ -1,17 +1,17 @@
-"""Synthetic dataset generator for cdn-spark-lab.
+"""Gerador de datasets sintéticos para cdn-spark-lab.
 
-Generates three Parquet tables built around a business/HR sales narrative:
-`empresas` (tiny dimension, 50 rows -> broadcast join demo), `funcionarios`
-(medium dimension, 5K-20K rows -> SortMergeJoin demo), and `vendas` (fact
-table, partitioned by ano/mes). Every `vendas` row also carries a
-denormalized `id_empresa` (always equal to its funcionario's employer) so
-labs can demonstrate a clean single-hop broadcast join without forcing a
-join through `funcionarios` first.
+Gera três tabelas Parquet baseadas em uma narrativa de vendas corporativas/RH:
+`empresas` (dimensão pequena, 50 linhas -> demonstração de broadcast join), `funcionarios`
+(dimensão média, 5K-20K linhas -> demonstração de SortMergeJoin) e `vendas` (tabela
+fato, particionada por ano/mes). Cada linha de `vendas` também carrega um
+`id_empresa` desnormalizado (sempre igual ao empregador do seu funcionário) para que
+os laboratórios possam demonstrar um broadcast join limpo de único salto sem forçar
+um join através de `funcionarios` primeiro.
 
-No internet access required — everything is generated locally with a fixed
-seed, so every student gets byte-identical data regardless of run date.
+Nenhum acesso à internet é necessário — tudo é gerado localmente com uma semente
+fixa, para que todo aluno obtenha dados byte-idênticos independentemente da data de execução.
 
-Usage:
+Uso:
     uv run python scripts/generate_dataset.py --scale small
     uv run python scripts/generate_dataset.py --scale large
 """
@@ -43,7 +43,7 @@ SETORES = [
     "Juridico",
 ]
 
-N_EMPRESAS = 50  # the slide's own example: "uma tabela pequena com 50 linhas"
+N_EMPRESAS = 50  # exemplo do próprio slide: "uma tabela pequena com 50 linhas"
 
 CARGO_SALARIO_BASE = {
     "Vendedor Junior": 2_500,
@@ -55,8 +55,8 @@ CARGO_SALARIO_BASE = {
 }
 CARGOS = list(CARGO_SALARIO_BASE.keys())
 
-# Fixed cutoff (not `today()`) — keeps generation deterministic regardless
-# of the date a student actually runs `make generate-data` on.
+# Corte fixo (não `today()`) — mantém a geração determinística independentemente
+# da data em que o aluno executar `make generate-data`.
 DATA_ADMISSAO_START = "2015-01-01"
 DATA_ADMISSAO_END = "2026-07-01"
 
@@ -96,9 +96,9 @@ def generate_funcionarios(n: int, rng: np.random.Generator, fake: Faker) -> pd.D
 def generate_vendas(n: int, funcionarios: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
     n_funcionarios = len(funcionarios)
     id_funcionario = rng.integers(1, n_funcionarios + 1, size=n, dtype=np.int64)
-    # Denormalized on purpose — always the funcionario's real employer, so
-    # `vendas` supports a clean single-hop broadcast join with `empresas`
-    # without forcing every query through `funcionarios` first.
+    # Desnormalizado de propósito — sempre o empregador real do funcionário, para que
+    # `vendas` suporte um broadcast join limpo de único salto com `empresas`
+    # sem forçar toda consulta a passar por `funcionarios` primeiro.
     funcionario_to_empresa = funcionarios.set_index("id_funcionario")["id_empresa"]
     id_empresa = funcionario_to_empresa.loc[id_funcionario].to_numpy()
 
@@ -128,12 +128,12 @@ def write_bronze(df: pd.DataFrame, name: str, partition_cols: list[str] | None =
             for col, val in zip(partition_cols, keys):
                 sub_dir = sub_dir / f"{col}={val}"
             sub_dir.mkdir(parents=True, exist_ok=True)
-            # coerce_timestamps="us": pandas/pyarrow default to nanosecond
-            # Parquet timestamps for datetime64 columns (e.g. data_admissao),
-            # which Spark 3.5.x's Parquet reader rejects outright
+            # coerce_timestamps="us": pandas/pyarrow usam nanossegundos como padrão
+            # para timestamps Parquet em colunas datetime64 (ex.: data_admissao),
+            # o que o leitor Parquet do Spark 3.5.x rejeita diretamente
             # ("Illegal Parquet type: INT64 (TIMESTAMP(NANOS,false))").
-            # Microsecond precision is what Spark expects and is more than
-            # enough resolution for a hire date.
+            # Precisão de microssegundos é o que o Spark espera e é mais que
+            # suficiente para uma data de admissão.
             group.drop(columns=partition_cols).to_parquet(
                 sub_dir / "part-000.parquet", index=False,
                 coerce_timestamps="us", allow_truncated_timestamps=True,

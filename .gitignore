@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs and temp files
+*.log
+tmp/
+temp/
+
+# Generated datasets (regenerate via `make generate-data`)
+data/*
+!data/.gitkeep
+
+# Python / Jupyter
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+
+# Auto-generated XML configs (regenerated from .env at container startup)
+config/hadoop/core-site.xml
+config/hadoop/hdfs-site.xml
+config/hadoop/mapred-site.xml
+config/hadoop/yarn-site.xml
+config/hadoop/capacity-scheduler.xml
+config/hadoop/*.xml.raw
+config/hadoop/exclude-hosts
+
+# IDEs
+.idea/
+.vscode/
+*.iws
+
+.claude/
+CLAUDE.md

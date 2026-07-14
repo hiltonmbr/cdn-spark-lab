@@ -1,4 +1,4 @@
-"""Unit tests for scripts/lab_utils.py — no Docker required."""
+"""Testes unitários para scripts/lab_utils.py — sem necessidade de Docker."""
 
 import sys
 

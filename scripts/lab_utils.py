@@ -1,17 +1,17 @@
-"""Shared utilities for all cdn-spark-lab notebooks.
+"""Utilitários compartilhados para todos os notebooks do cdn-spark-lab.
 
-Centralizes SparkSession creation for the 4 cases (local / Spark Connect /
-YARN+HDFS / Spark Connect+S3), plus small helpers for the Bronze/Silver/Gold
-medallion layout and the Lab 13 benchmark.
+Centraliza a criação da SparkSession para os 4 casos (local / Spark Connect /
+YARN+HDFS / Spark Connect+S3), além de pequenos auxiliares para o layout
+medallion Bronze/Silver/Gold e o benchmark do Lab 13.
 
-Pedagogical note: building the SparkSession *is* the lesson in Labs 01
-(local), 05 (Spark Connect), and 08 (YARN) — those notebooks inline the same
-`.builder...getOrCreate()` chain defined below by hand instead of calling
-these factories, so the connection mechanics stay visible instead of being
-hidden behind a one-line helper call. Every other notebook already saw that
-reveal once and just calls the factory to keep reruns short. If you change a
-factory's config here, mirror the change in the matching notebook's inlined
-cell too.
+Nota pedagógica: construir a SparkSession *é* a lição nos Labs 01
+(local), 05 (Spark Connect) e 08 (YARN) — esses notebooks inserem a mesma
+cadeia `.builder...getOrCreate()` definida abaixo manualmente em vez de chamar
+essas fábricas, para que a mecânica da conexão permaneça visível em vez de ficar
+oculta atrás de uma chamada de uma linha. Todos os outros notebooks já viram essa
+revelação uma vez e apenas chamam a fábrica para manter as reexecuções curtas. Se você
+alterar a configuração de uma fábrica aqui, espelhe a alteração na célula correspondente
+do notebook também.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ from pyspark.sql import SparkSession
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 # ---------------------------------------------------------------------------
-# SparkSession factories — one per case
+# Fábricas de SparkSession — uma por caso
 # ---------------------------------------------------------------------------
 
 
 def get_local_session(app_name: str = "cdn-spark-lab-local") -> SparkSession:
-    """Case A: pure local mode. No Docker involved — Spark ships inside pip."""
+    """Caso A: modo local puro. Sem Docker — o Spark já vem instalado via pip."""
     return (
         SparkSession.builder.appName(app_name)
         .master("local[*]")
@@ -41,39 +41,39 @@ def get_local_session(app_name: str = "cdn-spark-lab-local") -> SparkSession:
 
 
 def get_connect_session(app_name: str = "cdn-spark-lab-connect") -> SparkSession:
-    """Cases B and D: thin client over Spark Connect (`make up-cluster` / `make up-s3`).
+    """Casos B e D: cliente leve sobre Spark Connect (`make up-cluster` / `make up-s3`).
 
-    All heavy compute happens in the Docker cluster — this process only sends
-    the unresolved logical plan over gRPC and receives results back.
-    Remember: any file path you reference (e.g. "/data/bronze/vendas") is
-    resolved *inside* the containers, not on your laptop — that's why
-    docker-compose.yml mounts ./data at /data in every Spark container.
+    Todo o processamento pesado ocorre no cluster Docker — este processo apenas envia
+    o plano lógico não resolvido via gRPC e recebe os resultados de volta.
+    Lembre-se: qualquer caminho de arquivo que você referenciar (ex.: "/data/bronze/vendas") é
+    resolvido *dentro* dos contêineres, não no seu laptop — é por isso que
+    o docker-compose.yml monta ./data em /data em cada contêiner Spark.
     """
     return SparkSession.builder.appName(app_name).remote("sc://localhost:15002").getOrCreate()
 
 
 def get_yarn_session(app_name: str = "cdn-spark-lab-yarn") -> SparkSession:
-    """Case C: client mode against a dockerized YARN cluster (`make up-hadoop`).
+    """Caso C: modo client contra um cluster YARN dockerizado (`make up-hadoop`).
 
-    The driver runs on your HOST (this process), but executors run inside
-    the nodemanager1/nodemanager2 containers. For executors to call back to
-    this driver, docker-compose.yml gives them `host.docker.internal` via
-    Docker's `host-gateway` extra_hosts entry — hence `spark.driver.host`
-    below. See docs/07-spark-and-hdfs.md for the full explanation, including why
-    this case uses `webhdfs://` instead of `hdfs://` for all I/O.
+    O driver executa no seu HOST (este processo), mas os executores rodam dentro
+    dos contêineres nodemanager1/nodemanager2. Para que os executores chamem de volta
+    este driver, o docker-compose.yml fornece `host.docker.internal` via
+    entrada extra_hosts `host-gateway` do Docker — daí o `spark.driver.host`
+    abaixo. Consulte docs/07-spark-e-hdfs.md para a explicação completa, incluindo por que
+    este caso usa `webhdfs://` em vez de `hdfs://` para toda E/S.
     """
     import os
 
-    # Spark needs HADOOP_CONF_DIR to find the ResourceManager. This is a
-    # HOST-only config (localhost + published ports), separate from
-    # config/hadoop/ (used by the containers themselves) — see
-    # config/hadoop-client/ for why.
+    # O Spark precisa do HADOOP_CONF_DIR para encontrar o ResourceManager. Esta é uma
+    # configuração APENAS do HOST (localhost + portas publicadas), separada do
+    # config/hadoop/ (usado pelos próprios contêineres) — consulte
+    # config/hadoop-client/ para entender o motivo.
     os.environ["HADOOP_CONF_DIR"] = str(Path(__file__).resolve().parent.parent / "config" / "hadoop-client")
-    # Without Kerberos, HDFS trusts whatever username the client claims.
-    # Your host OS username almost certainly isn't "root" (the owner of "/"
-    # in this cluster, since every container in the "hadoop" profile runs as
-    # root) — this makes the driver identify as "root" too, avoiding a
-    # spurious AccessControlException on YARN's staging directory.
+    # Sem Kerberos, o HDFS confia em qualquer nome de usuário que o cliente informar.
+    # O nome de usuário do seu sistema host quase certamente não é "root" (o proprietário de "/"
+    # neste cluster, já que todo contêiner no perfil "hadoop" executa como
+    # root) — isso faz o driver se identificar como "root" também, evitando um
+    # AccessControlException espúrio no diretório de staging do YARN.
     os.environ["HADOOP_USER_NAME"] = "root"
 
     return (
@@ -85,33 +85,33 @@ def get_yarn_session(app_name: str = "cdn-spark-lab-yarn") -> SparkSession:
         .config("spark.executor.memory", "2g")
         .config("spark.executor.cores", "2")
         .config("spark.yarn.am.memory", "1g")
-        # Use Spark's jars already bind-mounted into the NodeManager
-        # containers (docker-compose.yml) instead of having YARN stage them
-        # through HDFS — sidesteps the driver-vs-container hostname mismatch
-        # for the URI that staging would otherwise bake in. See docs/07.
+        # Usa os jars do Spark já montados nos contêineres NodeManager
+        # (docker-compose.yml) em vez de fazer o YARN distribuí-los
+        # via HDFS — contorna a incompatibilidade de hostname entre driver e contêiner
+        # que o staging incorporaria. Consulte docs/07.
         .config("spark.yarn.jars", "local:/opt/spark-jars/*")
         .getOrCreate()
     )
 
 
 # ---------------------------------------------------------------------------
-# Bronze / Silver / Gold path helpers — same medallion layout, different root
+# Auxiliares de caminho Bronze / Silver / Gold — mesmo layout medallion, raiz diferente
 # ---------------------------------------------------------------------------
 
 LAYER_ROOTS = {
-    # Case A: plain host filesystem. Absolute (derived from this file's own
-    # location, not the caller's cwd) so it works the same from notebooks/
-    # (Jupyter's cwd), pytest (repo root), or anywhere else.
+    # Caso A: sistema de arquivos local absoluto. Absoluto (derivado da localização deste
+    # arquivo, não do cwd do chamador) para funcionar igualmente a partir de notebooks/
+    # (cwd do Jupyter), pytest (raiz do repositório) ou qualquer outro lugar.
     "local": str(DATA_DIR),
-    "connect": "/data",  # Cases B/D: shared volume, resolved inside containers
-    "hdfs": "webhdfs://localhost:14000/datalake",  # Case C: via the HttpFS gateway
-    "s3": "s3a://{layer}",  # Case D storage variant: bronze/silver/gold buckets
+    "connect": "/data",  # Casos B/D: volume compartilhado, resolvido dentro dos contêineres
+    "hdfs": "webhdfs://localhost:14000/datalake",  # Caso C: via gateway HttpFS
+    "s3": "s3a://{layer}",  # Variante de armazenamento Caso D: buckets bronze/silver/gold
 }
 
 
 def layer_path(tier: str, layer: str, table: str) -> str:
-    """Build the path for `table` in a given medallion `layer` (bronze/silver/gold)
-    for the given `tier` ("local", "connect", "hdfs", or "s3")."""
+    """Constrói o caminho para `table` em uma determinada camada medallion `layer` (bronze/silver/gold)
+    para o `tier` informado ("local", "connect", "hdfs" ou "s3")."""
     if tier == "s3":
         return f"s3a://{layer}/{table}"
     if tier == "hdfs":
@@ -123,13 +123,13 @@ def layer_path(tier: str, layer: str, table: str) -> str:
 def upload_bronze_table_to_hdfs(
     table: str, webhdfs_url: str = "http://localhost:14000"
 ) -> None:
-    """Uploads a locally generated bronze table (see generate_dataset.py) into
-    HDFS through the HttpFS gateway, preserving its partition folder layout.
+    """Faz upload de uma tabela bronze gerada localmente (consulte generate_dataset.py) para
+    o HDFS através do gateway HttpFS, preservando a estrutura de pastas particionadas.
 
-    Case C's executors run inside nodemanager1/nodemanager2, which have no
-    access to the host's ./data — unlike Cases B/D, where the shared Docker
-    volume makes the data visible to containers automatically. This is the
-    one-time bootstrap step that gets it into HDFS.
+    Os executores do Caso C rodam dentro de nodemanager1/nodemanager2, que não têm
+    acesso ao ./data do host — diferente dos Casos B/D, onde o volume compartilhado
+    do Docker torna os dados visíveis para os contêineres automaticamente. Este é o
+    passo de inicialização único que coloca os dados no HDFS.
     """
     from hdfs import InsecureClient
 
@@ -151,7 +151,7 @@ def upload_bronze_table_to_hdfs(
 
 
 # ---------------------------------------------------------------------------
-# Benchmark helpers (Lab 13 — the Grand Benchmark)
+# Auxiliares de benchmark (Lab 13 — O Grande Benchmark)
 # ---------------------------------------------------------------------------
 
 
@@ -165,7 +165,7 @@ class BenchmarkResult:
 
 @contextmanager
 def timed():
-    """Usage: with timed() as t: ... ; print(t.seconds)"""
+    """Uso: with timed() as t: ... ; print(t.seconds)"""
 
     class _Timer:
         seconds: float = 0.0
@@ -177,9 +177,9 @@ def timed():
 
 
 def run_gold_benchmark(spark: SparkSession, label: str, tier: str) -> BenchmarkResult:
-    """Runs the canonical Gold aggregation (vendas por setor/periodo, broadcast
-    join on empresas) and times it end-to-end, including the action.
-    Identical logic across all 4 tiers — only the input paths change."""
+    """Executa a agregação Gold canônica (vendas por setor/período, broadcast
+    join em empresas) e mede o tempo total, incluindo a ação.
+    Lógica idêntica em todos os 4 tiers — apenas os caminhos de entrada mudam."""
     from pyspark.sql.functions import broadcast, col
     from pyspark.sql.functions import sum as spark_sum
 
