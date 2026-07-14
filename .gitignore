@@ -45,3 +45,5 @@ config/hadoop/exclude-hosts
 
 .claude/
 CLAUDE.md
+
+docs/superpowers
