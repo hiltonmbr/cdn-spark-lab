@@ -14,6 +14,7 @@ x-hadoop-common: &hadoop-common
   volumes:
     - ./config/hadoop:/opt/hadoop/etc/hadoop
     - ./scripts:/scripts
+    - ../data:/data
   networks:
     - labnet
   restart: unless-stopped
@@ -28,13 +29,13 @@ services:
     <<: *spark-common
     container_name: spark-master
     hostname: spark-master
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
     ports:
       - "7077:7077" # RPC do Spark master — spark://localhost:7077
       - "8080:8080" # Web UI do Master
-    profiles: ["cluster"]
+    profiles: [ "cluster" ]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080 || exit 1"]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080 || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -54,9 +55,7 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
-        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
-        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -65,7 +64,7 @@ services:
         condition: service_healthy
     ports:
       - "8081:8081" # Web UI do Worker
-    profiles: ["cluster"]
+    profiles: [ "cluster" ]
 
   spark-worker-2:
     <<: *spark-common
@@ -78,9 +77,7 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
-        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
-        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -89,7 +86,7 @@ services:
         condition: service_healthy
     ports:
       - "8082:8081" # Web UI do Worker (mapeada para uma porta host diferente)
-    profiles: ["cluster"]
+    profiles: [ "cluster" ]
 
   spark-connect:
     <<: *spark-common
@@ -114,28 +111,16 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
-        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
-        /opt/spark/bin/spark-submit
-        --class org.apache.spark.sql.connect.service.SparkConnectServer
-        --master spark://spark-master:7077
-        --conf spark.driver.host=spark-connect
-        --conf spark.connect.grpc.binding.port=15002
-        --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000
-        --conf spark.hadoop.fs.s3a.access.key=admin
-        --conf spark.hadoop.fs.s3a.secret.key=adminpassword
-        --conf spark.hadoop.fs.s3a.path.style.access=true
-        --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
-        --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect --conf spark.connect.grpc.binding.port=15002 --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000 --conf spark.hadoop.fs.s3a.access.key=admin --conf spark.hadoop.fs.s3a.secret.key=adminpassword --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
     depends_on:
       spark-master:
         condition: service_healthy
     ports:
       - "15002:15002" # Endpoint gRPC do Spark Connect — sc://localhost:15002
       - "4040:4040" # Spark UI para o driver da sessão Connect
-    profiles: ["cluster"]
+    profiles: [ "cluster" ]
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15002' || exit 1"]
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15002' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -158,15 +143,9 @@ services:
       - drive1_data:/drives/1
       - drive2_data:/drives/2
       - drive3_data:/drives/3
-    profiles: ["s3"]
+    profiles: [ "s3" ]
     command: >
-      sh -c "
-      chown -R 10001:10001 /drives/0 &&
-      chown -R 10001:10001 /drives/1 &&
-      chown -R 10001:10001 /drives/2 &&
-      chown -R 10001:10001 /drives/3 &&
-      echo 'Permissions set for all 4 drives.'
-      "
+      sh -c " chown -R 10001:10001 /drives/0 && chown -R 10001:10001 /drives/1 && chown -R 10001:10001 /drives/2 && chown -R 10001:10001 /drives/3 && echo 'Permissions set for all 4 drives.' "
 
   rustfs-server:
     image: rustfs/rustfs:1.0.0-beta.8
@@ -193,9 +172,9 @@ services:
       - drive1_data:/data/drive1
       - drive2_data:/data/drive2
       - drive3_data:/data/drive3
-    profiles: ["s3"]
+    profiles: [ "s3" ]
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -sf http://127.0.0.1:9000/health || exit 1"]
+      test: [ "CMD", "sh", "-c", "curl -sf http://127.0.0.1:9000/health || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -208,16 +187,9 @@ services:
     depends_on:
       rustfs-server:
         condition: service_healthy
-    profiles: ["s3"]
+    profiles: [ "s3" ]
     entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set rustfs http://rustfs-server:9000 admin adminpassword;
-      /usr/bin/mc mb rustfs/bronze || true;
-      /usr/bin/mc mb rustfs/silver || true;
-      /usr/bin/mc mb rustfs/gold || true;
-      echo 'Buckets bronze/silver/gold ready.';
-      exit 0;
-      "
+      /bin/sh -c " /usr/bin/mc alias set rustfs http://rustfs-server:9000 admin adminpassword; /usr/bin/mc mb rustfs/bronze || true; /usr/bin/mc mb rustfs/silver || true; /usr/bin/mc mb rustfs/gold || true; echo 'Buckets bronze/silver/gold ready.'; exit 0; "
 
   # ===========================================================================
   # profile "hadoop" — HDFS + YARN, reduzido para 2 DataNodes / 2 NodeManagers.
@@ -231,14 +203,14 @@ services:
     ports:
       - "9870:9870" # Web UI do NameNode
       - "8020:8020" # RPC do NameNode
-    command: ["/bin/bash", "/scripts/start-hdfs.sh"]
+    command: [ "/bin/bash", "/scripts/start-hdfs.sh" ]
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.namenode.NameNode'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.namenode.NameNode'" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 120s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   datanode1:
     <<: *hadoop-common
@@ -247,14 +219,14 @@ services:
     depends_on:
       namenode:
         condition: service_started
-    command: ["/bin/bash", "/scripts/init-datanode.sh"]
+    command: [ "/bin/bash", "/scripts/init-datanode.sh" ]
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.datanode.DataNode'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.datanode.DataNode'" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   datanode2:
     <<: *hadoop-common
@@ -263,37 +235,37 @@ services:
     depends_on:
       namenode:
         condition: service_started
-    command: ["/bin/bash", "/scripts/init-datanode.sh"]
+    command: [ "/bin/bash", "/scripts/init-datanode.sh" ]
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.datanode.DataNode'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.datanode.DataNode'" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   resourcemanager:
     <<: *hadoop-common
     container_name: resourcemanager
     hostname: resourcemanager
-    command: ["yarn", "resourcemanager"]
+    command: [ "yarn", "resourcemanager" ]
     ports:
       - "8088:8088" # Web UI do ResourceManager
       - "8032:8032" # RPC do cliente (submissão de jobs) — usado pelo driver do host, veja config/hadoop-client/
       - "8030:8030" # RPC do Scheduler — usado pelo driver do host
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.resourcemanager.ResourceManager'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.resourcemanager.ResourceManager'" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   nodemanager1:
     <<: *hadoop-common
     container_name: nodemanager1
     hostname: nodemanager1
-    command: ["yarn", "nodemanager"]
+    command: [ "yarn", "nodemanager" ]
     depends_on:
       resourcemanager:
         condition: service_started
@@ -316,18 +288,18 @@ services:
       - ./scripts:/scripts
       - ./.venv/lib/python3.12/site-packages/pyspark/jars:/opt/spark-jars:ro
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   nodemanager2:
     <<: *hadoop-common
     container_name: nodemanager2
     hostname: nodemanager2
-    command: ["yarn", "nodemanager"]
+    command: [ "yarn", "nodemanager" ]
     depends_on:
       resourcemanager:
         condition: service_started
@@ -338,12 +310,12 @@ services:
       - ./scripts:/scripts
       - ./.venv/lib/python3.12/site-packages/pyspark/jars:/opt/spark-jars:ro
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
   proxy:
     <<: *hadoop-common
@@ -354,14 +326,14 @@ services:
         condition: service_started
     ports:
       - "14000:14000" # Gateway HttpFS (WebHDFS REST) — o ÚNICO ponto de entrada HDFS que o Spark driver do host usa
-    command: ["hdfs", "httpfs"]
+    command: [ "hdfs", "httpfs" ]
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q httpfs"]
+      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q httpfs" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    profiles: ["hadoop"]
+    profiles: [ "hadoop" ]
 
 networks:
   labnet:
