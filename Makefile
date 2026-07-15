@@ -2,8 +2,8 @@
 SCALE ?= small
 ALL_PROFILES := --profile cluster --profile s3 --profile hadoop
 
-.PHONY: help generate-data up-cluster up-s3 up-hadoop down clean clean-data \
-        status logs shell-% setup-env jupyter-lab strip check lint test
+.PHONY: help generate-data spark s3 hadoop down clean clean-data \
+        status logs shell-% setup-env jupyter strip check lint test
 
 help:
 	@echo "⚡✨ Bem-vindo ao Spark Lab! De local[*] ao YARN+HDFS e S3! ✨⚡"
@@ -11,9 +11,9 @@ help:
 	@echo ""
 	@echo "  🧬 make generate-data SCALE=small|large - 🏭 Gera o dataset sintético de vendas/clientes/categorias"
 	@echo ""
-	@echo "  🔥 make up-cluster       - 🏗️  Inicia o Spark Standalone (master + 2 workers + Spark Connect) — Caso B"
-	@echo "  🪣 make up-s3            - 🏗️  Inicia o cluster + RustFS (4 drives, Erasure Coding) — Caso D"
-	@echo "  🐘 make up-hadoop        - 🏗️  Inicia HDFS + YARN (2 DataNodes, 2 NodeManagers) — Caso C"
+	@echo "  🔥 make spark       - 🏗️  Inicia o Spark Cluster (master + 2 workers + Spark Connect) — Caso B"
+	@echo "  🪣 make s3            - 🏗️  Inicia o cluster + RustFS (4 drives, Erasure Coding) — Caso D"
+	@echo "  🐘 make hadoop        - 🏗️  Inicia HDFS + YARN (2 DataNodes, 2 NodeManagers) — Caso C"
 	@echo "  🛑 make down             - 😴 Para tudo (qualquer profile)"
 	@echo "  💣 make clean            - ☢️  Destrói containers, volumes E dados locais/HDFS"
 	@echo "  🧹 make clean-data       - 🗑️  Limpa apenas datasets gerados em data/ e temp/"
@@ -22,7 +22,7 @@ help:
 	@echo "  🐚 make shell-<name>     - 👨‍💻 Abre um shell em qualquer container (spark-master, namenode, datanode1, ...)"
 	@echo ""
 	@echo "  🐍 make setup-env        - 🪄  Cria o Python venv e instala dependências com uv"
-	@echo "  📓 make jupyter-lab      - 🚀 Inicia o Jupyter Lab (mesmo comando para os 4 casos)"
+	@echo "  📓 make jupyter          - 🚀 Inicia o Jupyter Lab (mesmo comando para os 4 casos)"
 	@echo "  🧹 make strip            - ✂️  Remove todas as saídas dos notebooks"
 	@echo "  🔍 make check            - 🧪 Verifica se os notebooks estão sem saídas (seguro para CI)"
 	@echo "  🎨 make lint             - 🐍 Executa o ruff linter em scripts/ e notebooks/"
@@ -33,8 +33,8 @@ generate-data:
 	@echo "🏭 Gerando dataset sintético (scale=$(SCALE))..."
 	uv run python scripts/generate_dataset.py --scale $(SCALE)
 
-up-cluster:
-	@echo "🔥⚡ Iniciando cluster Spark Standalone (master + 2 workers + Spark Connect)... 🚀"
+spark:
+	@echo "🔥⚡ Iniciando cluster Spark (master + 2 workers + Spark Connect)... 🚀"
 	docker compose --profile cluster up -d
 	@echo ""
 	@echo "🎉 Cluster está no ar!"
@@ -43,7 +43,7 @@ up-cluster:
 	@echo "   🔌 Spark Connect:   sc://localhost:15002"
 	@echo "   📊 Spark App UI:    http://localhost:4040"
 
-up-s3:
+s3:
 	@echo "🔥⚡ Iniciando cluster Spark Standalone + RustFS (4 drives, Erasure Coding)... 🚀"
 	docker compose --profile cluster --profile s3 up -d
 	@echo ""
@@ -52,7 +52,7 @@ up-s3:
 	@echo "   🌐 S3 API:          http://localhost:9000"
 	@echo "   🖥️  RustFS Console:  http://localhost:9001  (admin / adminpassword)"
 
-up-hadoop:
+hadoop:
 	@echo "🐘✨ Iniciando HDFS + YARN (2 DataNodes, 2 NodeManagers)... 🚀"
 	docker compose --profile hadoop up -d
 	@echo ""
@@ -100,7 +100,7 @@ setup-env:
 	@echo "✅ Ambiente pronto! Ative com: source .venv/bin/activate"
 	@echo "✅ Kernel Jupyter 'cdn-spark-lab' registrado — selecione-o nos notebooks (não use o genérico 'Python 3')."
 
-jupyter-lab:
+jupyter:
 	@echo "📓🚀 Iniciando Jupyter Lab..."
 	uv run jupyter lab --notebook-dir=notebooks
 

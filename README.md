@@ -37,7 +37,7 @@ Um **laboratório prático** construído em torno de uma única pergunta: o que 
 | **C — Hadoop** | Host (`uv`), modo cliente + `host-gateway` | **YARN** (Docker) | HDFS (Docker), via gateway HttpFS |
 | **D — Object Storage** | Host (`uv`), cliente **Spark Connect** | Spark Standalone (reutilizado de B) | RustFS via `s3a://` (Docker) |
 
-Todo caso usa o mesmo fluxo do cliente — `make setup-env` → `make jupyter-lab`, o notebook sempre no host — então a infraestrutura é o que muda, não seu fluxo de trabalho.
+Todo caso usa o mesmo fluxo do cliente — `make setup-env` → `make jupyter`, o notebook sempre no host — então a infraestrutura é o que muda, não seu fluxo de trabalho.
 
 ---
 
@@ -53,16 +53,16 @@ make setup-env
 make generate-data SCALE=small
 
 # 3. Inicie o Jupyter Lab e comece com o Lab 00
-make jupyter-lab
+make jupyter
 ```
 
 O Caso A (Labs 00–04) não precisa de nada além disso — sem Docker necessário. Casos posteriores ativam sua própria infraestrutura sob demanda:
 
 ```bash
-make up-cluster   # Caso B — Spark Standalone (master + 2 workers) + Spark Connect
-make up-s3        # Caso D — cluster acima + RustFS (4 drives, Erasure Coding)
-make up-hadoop    # Caso C — HDFS + YARN (2 DataNodes, 2 NodeManagers)
-make down         # Para tudo, qualquer perfil
+make spark    # Caso B — Spark Standalone (master + 2 workers) + Spark Connect
+make s3       # Caso D — cluster acima + RustFS (4 drives, Erasure Coding)
+make hadoop   # Caso C — HDFS + YARN (2 DataNodes, 2 NodeManagers)
+make down     # Para tudo, qualquer perfil
 ```
 
 Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PySpark e Docker estão prontos antes de cada nível.
@@ -107,7 +107,7 @@ Leia estes em `docs/` antes do nível de laboratório correspondente — cada um
 
 ### 🧪 Laboratórios Práticos
 
-Abra via `make jupyter-lab`. **Comece com o Lab 00** para validar seu ambiente para qualquer nível que você for executar.
+Abra via `make jupyter`. **Comece com o Lab 00** para validar seu ambiente para qualquer nível que você for executar.
 
 | # | Nível | Notebook | Foco |
 |:---:|:---:|---|---|
@@ -206,9 +206,9 @@ graph TD
 make generate-data SCALE=small|large  # Gera empresas/funcionarios/vendas
 
 # ── Infraestrutura ──────────────────────────────────────────────────
-make up-cluster      # Caso B — Spark Standalone + Spark Connect
-make up-s3           # Caso D — cluster + RustFS
-make up-hadoop       # Caso C — HDFS + YARN
+make spark           # Caso B — Spark Standalone + Spark Connect
+make s3              # Caso D — cluster + RustFS
+make hadoop          # Caso C — HDFS + YARN
 make down            # Para tudo (qualquer perfil)
 make clean           # Destrói containers, volumes E dados locais/HDFS
 make clean-data      # Limpa apenas datasets gerados em data/ e temp/
@@ -218,7 +218,7 @@ make shell-<name>    # Acessa o shell de qualquer container (spark-master, namen
 
 # ── Ambiente Python ────────────────────────────────────────────────
 make setup-env       # Cria .venv com uv, registra kernel Jupyter, configura nbstripout
-make jupyter-lab     # Inicia o Jupyter Lab (mesmo comando para todos os 4 casos)
+make jupyter         # Inicia o Jupyter Lab (mesmo comando para todos os 4 casos)
 
 # ── Qualidade ───────────────────────────────────────────────────────
 make strip           # Remove todas as saídas dos notebooks (execute antes de commitar)
@@ -236,7 +236,7 @@ make test            # Executa pytest + nbmake testes end-to-end nos notebooks (
 uv run pytest tests/test_lab_utils.py -v
 
 # Testes end-to-end completos nos notebooks (ative o perfil relevante primeiro)
-make up-cluster
+make spark
 make test
 ```
 

@@ -44,7 +44,19 @@ services:
     <<: *spark-common
     container_name: spark-worker-1
     hostname: spark-worker-1
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    # Baixa o mesmo jar do Spark Connect que o container spark-connect usa
+    # (veja o comentário no serviço spark-connect). Os executores rodam
+    # AQUI, nos workers — se a classe que desserializa o closure de
+    # coleta/Arrow do Spark Connect não existir no classpath do worker
+    # também, a task falha com ClassCastException (SerializedLambda não
+    # resolve para a implementação real do closure).
+    command:
+      - /bin/bash
+      - -c
+      - >
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
+        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -59,7 +71,16 @@ services:
     <<: *spark-common
     container_name: spark-worker-2
     hostname: spark-worker-2
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    # Veja o comentário em spark-worker-1 / spark-connect: os executores
+    # precisam do jar do Spark Connect no próprio classpath para desserializar
+    # os closures de coleta/Arrow que o Spark Connect usa internamente.
+    command:
+      - /bin/bash
+      - -c
+      - >
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
+        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -74,19 +95,38 @@ services:
     <<: *spark-common
     container_name: spark-connect
     hostname: spark-connect
-    command: >
-      /opt/spark/bin/spark-submit
-      --class org.apache.spark.sql.connect.service.SparkConnectServer
-      --packages org.apache.spark:spark-connect_2.12:3.5.3
-      --master spark://spark-master:7077
-      --conf spark.driver.host=spark-connect
-      --conf spark.connect.grpc.binding.port=15002
-      --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000
-      --conf spark.hadoop.fs.s3a.access.key=admin
-      --conf spark.hadoop.fs.s3a.secret.key=adminpassword
-      --conf spark.hadoop.fs.s3a.path.style.access=true
-      --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
-      --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+    # Baixamos o jar do Spark Connect direto para /opt/spark/jars/ (em vez de
+    # usar --packages) e fazemos o MESMO em spark-worker-1/2 (veja os
+    # comentários lá). Motivo: o Spark Connect executa parte da sua lógica de
+    # coleta/conversão para Arrow como um closure rodando via mapPartitions —
+    # ou seja, DENTRO dos executores (workers), não só no Driver. Se esse jar
+    # não estiver no classpath do worker também, a desserialização da task
+    # falha com "ClassCastException: cannot assign instance of
+    # SerializedLambda to field ... of type scala.Function3" — o worker
+    # recebe a referência ao closure mas não tem a classe que o implementa.
+    # --packages sozinho (populando spark.jars) NÃO resolve isso de forma
+    # confiável para esse closure específico; colocando o jar diretamente no
+    # classpath estático (-cp .../jars/*) de cada container, ele já está lá
+    # antes mesmo da JVM subir. Testado: com o jar só no Driver, o erro
+    # persiste; com o jar também nos workers, `count()`/`groupBy()` via
+    # Spark Connect funcionam normalmente.
+    command:
+      - /bin/bash
+      - -c
+      - >
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar
+        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        /opt/spark/bin/spark-submit
+        --class org.apache.spark.sql.connect.service.SparkConnectServer
+        --master spark://spark-master:7077
+        --conf spark.driver.host=spark-connect
+        --conf spark.connect.grpc.binding.port=15002
+        --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000
+        --conf spark.hadoop.fs.s3a.access.key=admin
+        --conf spark.hadoop.fs.s3a.secret.key=adminpassword
+        --conf spark.hadoop.fs.s3a.path.style.access=true
+        --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+        --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
     depends_on:
       spark-master:
         condition: service_healthy
