@@ -5,6 +5,7 @@ import re
 import sys
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, "scripts")
 import generate_dataset
@@ -117,3 +118,32 @@ def test_write_avaliacoes_callcenter_produz_csv_legado_ponto_e_virgula_latin1(tm
     campos = linhas[1].split(";")
     assert "," in campos[-1]  # decimal com vírgula em tempo_atendimento_min
     assert re.match(r"^\d{2}/\d{2}/\d{4}$", campos[5])  # data em dd/mm/aaaa, não ISO
+
+
+def test_main_nao_muda_geracao_das_tabelas_existentes(tmp_path, monkeypatch):
+    """Regressão: empresas/funcionarios devem continuar byte-idênticas ao que
+    eram antes de avaliacoes existir — os notebooks 00-08 já revisados citam
+    valores exatos derivados delas. Valores golden capturados do dataset
+    "small" gerado pela versão do script SEM avaliacoes."""
+    monkeypatch.setattr(generate_dataset, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["generate_dataset.py", "--scale", "small"])
+
+    generate_dataset.main()
+
+    empresas = pd.read_parquet(tmp_path / "bronze" / "empresas" / "part-000.parquet")
+    funcionarios = pd.read_parquet(tmp_path / "bronze" / "funcionarios" / "part-000.parquet")
+
+    primeira_empresa = empresas.iloc[0]
+    assert primeira_empresa["nome_empresa"] == "Alves e Filhos"
+    assert primeira_empresa["setor"] == "Tecnologia"
+    assert primeira_empresa["regiao"] == "Sudeste"
+
+    primeiro_funcionario = funcionarios.iloc[0]
+    assert primeiro_funcionario["nome_funcionario"] == "Luigi Camargo"
+    assert primeiro_funcionario["id_empresa"] == 24
+    assert primeiro_funcionario["cargo"] == "Gerente Comercial"
+
+    # avaliacoes também devem ter sido escritas pelo mesmo main()
+    assert (tmp_path / "bronze" / "avaliacoes_app" / "part-000.jsonl").exists()
+    assert (tmp_path / "bronze" / "avaliacoes_site" / "part-000.csv").exists()
+    assert (tmp_path / "bronze" / "avaliacoes_callcenter" / "part-000.csv").exists()

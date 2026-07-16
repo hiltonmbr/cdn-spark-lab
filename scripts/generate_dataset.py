@@ -8,6 +8,11 @@ fato, particionada por ano/mes). Cada linha de `vendas` também carrega um
 os laboratórios possam demonstrar um broadcast join limpo de único salto sem forçar
 um join através de `funcionarios` primeiro.
 
+Também gera `avaliacoes` — avaliações de clientes por empresa, simuladas como vindas
+de 3 sistemas de origem diferentes, cada um exportando em um formato distinto (JSON
+Lines, CSV limpo, CSV legado com separador ';'/encoding Latin-1), para o notebook 09
+(leitura de múltiplos formatos de arquivo).
+
 Nenhum acesso à internet é necessário — tudo é gerado localmente com uma semente
 fixa, para que todo aluno obtenha dados byte-idênticos independentemente da data de execução.
 
@@ -338,6 +343,7 @@ def main() -> None:
     args = parser.parse_args()
 
     n_vendas, n_funcionarios = SCALES[args.scale]
+    n_avaliacoes_app, n_avaliacoes_site, n_avaliacoes_callcenter = AVALIACOES_SCALES[args.scale]
     rng = np.random.default_rng(SEED)
     fake = Faker("pt_BR")
     Faker.seed(SEED)
@@ -355,10 +361,25 @@ def main() -> None:
     write_bronze(funcionarios, "funcionarios")
     write_bronze(vendas, "vendas", partition_cols=["ano", "mes"])
 
+    # IMPORTANTE: as 3 chamadas abaixo devem ficar SEMPRE depois das 3 chamadas
+    # acima — todas compartilham o mesmo `rng`, e gerar avaliacoes ANTES de
+    # empresas/funcionarios/vendas mudaria os valores dessas 3 tabelas (números
+    # já citados nas células markdown dos notebooks 00-08 dependem disso).
+    avaliacoes_app = generate_avaliacoes_app(n_avaliacoes_app, rng)
+    avaliacoes_site = generate_avaliacoes_site(n_avaliacoes_site, rng)
+    avaliacoes_callcenter = generate_avaliacoes_callcenter(n_avaliacoes_callcenter, rng)
+
+    write_avaliacoes_app(avaliacoes_app)
+    write_avaliacoes_site(avaliacoes_site)
+    write_avaliacoes_callcenter(avaliacoes_callcenter)
+
     print(f"✅ Bronze layer written to {DATA_DIR / 'bronze'}")
-    print(f"   empresas/       (unpartitioned, {N_EMPRESAS} rows)")
-    print(f"   funcionarios/   (unpartitioned, {n_funcionarios:,} rows)")
-    print(f"   vendas/         (partitioned by ano/mes, {n_vendas:,} rows)")
+    print(f"   empresas/               (unpartitioned, {N_EMPRESAS} rows)")
+    print(f"   funcionarios/           (unpartitioned, {n_funcionarios:,} rows)")
+    print(f"   vendas/                 (partitioned by ano/mes, {n_vendas:,} rows)")
+    print(f"   avaliacoes_app/         (JSON Lines, {n_avaliacoes_app:,} rows)")
+    print(f"   avaliacoes_site/        (CSV, {n_avaliacoes_site:,} rows)")
+    print(f"   avaliacoes_callcenter/  (CSV legado ';'/Latin-1, {n_avaliacoes_callcenter:,} rows)")
 
 
 if __name__ == "__main__":
