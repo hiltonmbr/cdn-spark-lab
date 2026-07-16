@@ -40,7 +40,7 @@ services:
     ports:
       - "7077:7077"
       - "8080:8080"
-    profiles: [ "cluster" ]
+    profiles: [ "cluster", "s3", "hadoop" ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:8080 || exit 1" ]
       interval: 10s
@@ -56,7 +56,10 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        curl -sL -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar &&
+        curl -sL -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar &&
+        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -65,7 +68,7 @@ services:
         condition: service_healthy
     ports:
       - "8081:8081"
-    profiles: [ "cluster" ]
+    profiles: [ "cluster", "s3", "hadoop" ]
 
   spark-worker-2:
     <<: *spark-common
@@ -75,7 +78,10 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        curl -sL -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar &&
+        curl -sL -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar &&
+        /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_MEMORY: "2g"
@@ -84,7 +90,7 @@ services:
         condition: service_healthy
     ports:
       - "8082:8081"
-    profiles: [ "cluster" ]
+    profiles: [ "cluster", "s3", "hadoop" ]
 
   spark-connect:
     <<: *spark-common
@@ -121,7 +127,10 @@ services:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect-s3 --conf spark.connect.grpc.binding.port=15003 --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000 --conf spark.hadoop.fs.s3a.access.key=admin --conf spark.hadoop.fs.s3a.secret.key=adminpassword --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar &&
+        curl -sL -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar &&
+        curl -sL -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar &&
+        /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect-s3 --conf spark.connect.grpc.binding.port=15003 --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000 --conf spark.hadoop.fs.s3a.access.key=admin --conf spark.hadoop.fs.s3a.secret.key=adminpassword --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
     depends_on:
       spark-master:
         condition: service_healthy
