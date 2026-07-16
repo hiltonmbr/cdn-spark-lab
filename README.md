@@ -1,7 +1,7 @@
 # ⚡ cdn-spark-lab: Apache Spark, Do Laptop ao Cluster
 
 ### **O Guia Prático de Processamento Distribuído de Dados**
-Veja o *mesmo* pipeline Bronze→Silver→Gold rodar em 4 infraestruturas crescentes — processo local, cluster Spark Standalone, YARN+HDFS e armazenamento de objetos compatível com S3 — com o Spark como o motor constante. Tese central: **Spark não substitui armazenamento, ele substitui o MapReduce.**
+Veja o *mesmo* pipeline Bronze→Silver→Gold rodar em 4 infraestruturas crescentes — processo local, cluster Spark Standalone, HDFS e armazenamento de objetos compatível com S3 — com o Spark como o motor constante. Tese central: **Spark não substitui armazenamento, ele substitui o MapReduce.**
 
 ![Docker](https://img.shields.io/badge/Docker-27.x-2496ED?logo=docker&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Compose-v2-2496ED?logo=docker&logoColor=white)
@@ -19,10 +19,10 @@ Veja o *mesmo* pipeline Bronze→Silver→Gold rodar em 4 infraestruturas cresce
 Um **laboratório prático** construído em torno de uma única pergunta: o que realmente muda quando você migra um job Spark do seu laptop para um cluster real? Em vez de 4 demonstrações desconectadas, este laboratório executa o **mesmo pipeline e a mesma agregação Gold** em 4 arquiteturas progressivamente mais realistas, para que as diferenças que você vê sejam reais, não acidentais.
 
 - 📖 **8 módulos teóricos** — limites do MapReduce, RDDs/linhagem, DAG e avaliação lazy, DataFrames/Catalyst/Tungsten, internals do PySpark, caching/AQE, Spark+HDFS, Spark+Armazenamento de Objetos.
-- 💻 **14 laboratórios interativos (00–13)** — começando com 4 labs PySpark com sabor de negócios (`local[*]`, sem Docker), depois um lab de caos YARN e um dashboard de benchmark 4-vias.
-- 🏗️ **Um `docker-compose.yml`, três perfis** — `cluster` (Standalone + Spark Connect), `s3` (RustFS, aditivo ao `cluster`), `hadoop` (HDFS + YARN, isolado). Sem definições duplicadas de serviço Spark.
+- 💻 **13 laboratórios interativos (00–11)** — começando com 4 labs PySpark com sabor de negócios (`local[*]`, sem Docker), depois labs Spark Connect, S3 e HDFS.
+- 🏗️ **Um `docker-compose.yml`, três perfis** — `cluster` (Spark Standalone + Spark Connect na porta 15002), `s3` (RustFS + Spark Connect S3 na porta 15003), `hadoop` (HDFS + Spark Connect HDFS na porta 15004). Profiles `s3` e `hadoop` reutilizam o mesmo master/workers do `cluster`. Sem YARN.
 - 🧬 **Dataset sintético de negócios, reproduzível** — `empresas`/`funcionarios`/`vendas`, Faker + NumPy, semente fixa, gerado sob demanda nas escalas `small` ou `large` — zero dependência de internet.
-- 🏁 **Um benchmark de encerramento** — a mesma agregação Gold (vendas por setor/mês, broadcast join) medida nas 4 arquiteturas lado a lado.
+- 🏁 **Um benchmark de encerramento** — a mesma agregação Gold (vendas por setor/mês, broadcast join) medida nas arquiteturas lado a lado.
 
 > **Público-alvo:** Engenheiros de dados, estudantes e qualquer um que já executou `pip install pyspark` e agora quer entender o que muda quando o Spark deixa de estar sozinho na máquina.
 
@@ -30,14 +30,20 @@ Um **laboratório prático** construído em torno de uma única pergunta: o que 
 
 ## 🧭 Os 4 Casos
 
-| Caso | Onde o notebook roda | Gerenciador de cluster | Armazenamento |
+| Caso | Conexão | Gerenciador de cluster | Armazenamento |
 |---|---|---|---|
-| **A — Local** | Host (`uv`) | `local[*]` (embutido no `pyspark`) | Disco local |
-| **B — Cluster** | Host (`uv`), cliente **Spark Connect** | Spark Standalone (Docker) | Volume Docker compartilhado |
-| **C — Hadoop** | Host (`uv`), modo cliente + `host-gateway` | **YARN** (Docker) | HDFS (Docker), via gateway HttpFS |
-| **D — Object Storage** | Host (`uv`), cliente **Spark Connect** | Spark Standalone (reutilizado de B) | RustFS via `s3a://` (Docker) |
+| **A — Local** | `local[*]` embutido | Nenhum (processo único) | Disco local |
+| **B — Cluster** | `sc://localhost:15002` | Spark Standalone (Docker) | Volume Docker `/data` |
+| **C — HDFS** | `sc://localhost:15004` | Spark Standalone (Docker) | HDFS `hdfs://namenode:8020` |
+| **D — Object Storage** | `sc://localhost:15003` | Spark Standalone (Docker) | RustFS `s3a://` |
 
-Todo caso usa o mesmo fluxo do cliente — `make setup-env` → `make jupyter`, o notebook sempre no host — então a infraestrutura é o que muda, não seu fluxo de trabalho.
+O cluster Spark (master + 2 workers) é o **mesmo** para B, C e D — o que muda é o Spark Connect server que você escolhe conectar. Cada um carrega confs diferentes (volume local / HDFS / S3A). O fluxo do cliente é sempre `make setup-env` → `make jupyter`.
+
+```bash
+make spark      # Caso B — Spark Connect na porta 15002 (volume /data)
+make s3         # Caso D — Spark Connect S3 na porta 15003 (aditivo ao B)
+make hadoop     # Caso C — Spark Connect HDFS na porta 15004 (aditivo ao B)
+```
 
 ---
 
@@ -59,10 +65,11 @@ make jupyter
 O Caso A (Labs 00–04) não precisa de nada além disso — sem Docker necessário. Casos posteriores ativam sua própria infraestrutura sob demanda:
 
 ```bash
-make spark    # Caso B — Spark Standalone (master + 2 workers) + Spark Connect
-make s3       # Caso D — cluster acima + RustFS (4 drives, Erasure Coding)
-make hadoop   # Caso C — HDFS + YARN (2 DataNodes, 2 NodeManagers)
-make down     # Para tudo, qualquer perfil
+make spark    # Caso B — Spark Standalone (master + 2 workers + Spark Connect na 15002)
+make s3       # Caso D — adiciona RustFS + Spark Connect S3 (15003) ao cluster
+make hadoop   # Caso C — adiciona HDFS + Spark Connect HDFS (15004) ao cluster
+make full     # Tudo de uma vez: Spark + RustFS + HDFS
+make down     # Para tudo
 ```
 
 Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PySpark e Docker estão prontos antes de cada nível.
@@ -77,14 +84,12 @@ Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PyS
 | **Docker Compose** | Embutido no Docker Desktop |
 | **uv** | Gerenciador de pacotes Python rápido ([Instalação](https://docs.astral.sh/uv/getting-started/installation/)) |
 | **Make** | Usado em todos atalhos abaixo (opcional — veja o [Makefile](Makefile) para os comandos brutos) |
-| **Recursos** | ~4 GB RAM para perfis `cluster`/`s3`; **8 GB recomendados** para o perfil `hadoop` (~6 serviços) |
+| **Recursos** | ~4 GB RAM para perfis `cluster`/`s3`; **8 GB recomendados** para o perfil `hadoop` (~7 serviços) |
 | **Disco** | Alguns GB livres para a escala `large` do dataset e replicação HDFS |
 
 ```bash
 docker version && docker compose version && uv --version
 ```
-
-> **Caso C e `host-gateway`:** Spark-on-YARN precisa que o driver (que sempre roda no host neste laboratório) seja acessível pelos executors alocados dinamicamente. Este laboratório usa o `host-gateway` nativo do Docker (Docker 20.10+, todas as plataformas) em vez de rodar o notebook dentro de um container — veja [`docs/07-spark-e-hdfs.md`](docs/07-spark-e-hdfs.md) para o mecanismo completo.
 
 ---
 
@@ -92,39 +97,33 @@ docker version && docker compose version && uv --version
 
 ### 📖 Teoria
 
-Leia estes em `docs/` antes do nível de laboratório correspondente — cada um consolida as seções relevantes do módulo Spark em um documento direto e guiado por exemplos.
-
 | # | Módulo | Antecede |
 |:---:|---|:---:|
-| 1 | [Do MapReduce ao Spark](docs/01-do-mapreduce-ao-spark.md) — motivação, Driver/Executors/Gerenciador de Cluster | Nível A |
+| 1 | [Do MapReduce ao Spark](docs/01-do-mapreduce-ao-spark.md) | Nível A |
 | 2 | [RDDs, Linhagem & Particionamento](docs/02-rdds-linhagem-particoes.md) | Nível A |
-| 3 | [Transformações, Ações & o DAG](docs/03-transformacoes-acoes-dag.md) — avaliação lazy, shuffle | Nível B |
+| 3 | [Transformações, Ações & o DAG](docs/03-transformacoes-acoes-dag.md) | Nível B |
 | 4 | [DataFrames, Spark SQL, Catalyst & Tungsten](docs/04-dataframes-catalyst-tungsten.md) | Nível B |
-| 5 | [PySpark na Prática](docs/05-pyspark-na-pratica.md) — SparkSession, Py4J, Pandas UDFs, Spark Connect | Nível B |
-| 6 | [Persistência & Otimização](docs/06-persistencia-e-otimizacao.md) — cache, broadcast, AQE | Nível B |
-| 7 | [Spark + HDFS](docs/07-spark-e-hdfs.md) — YARN, formatos de arquivo, por que `webhdfs://` | Nível C |
-| 8 | [Spark + Armazenamento de Objetos](docs/08-spark-e-armazenamento-objetos.md) — `s3a`, RustFS, trade-offs | Nível D |
+| 5 | [PySpark na Prática](docs/05-pyspark-na-pratica.md) | Nível B |
+| 6 | [Persistência & Otimização](docs/06-persistencia-e-otimizacao.md) | Nível B |
+| 7 | [Spark + HDFS](docs/07-spark-e-hdfs.md) | Nível C |
+| 8 | [Spark + Armazenamento de Objetos](docs/08-spark-e-armazenamento-objetos.md) | Nível D |
 
 ### 🧪 Laboratórios Práticos
-
-Abra via `make jupyter`. **Comece com o Lab 00** para validar seu ambiente para qualquer nível que você for executar.
 
 | # | Nível | Notebook | Foco |
 |:---:|:---:|---|---|
 | 00 | — | [Setup Check](notebooks/00_setup_check.ipynb) | Valida Python, pyspark, Docker por nível |
-| 01 | A · Local | [Primeiros Passos com PySpark](notebooks/01_primeiros_passos_pyspark.ipynb) | `select`, `filter`, `withColumn`, `show`/`collect`/`toPandas` em um dataset de negócios |
-| 02 | A · Local | [Agregações de Negócio](notebooks/02_agregacoes_de_negocio.ipynb) | `groupBy`/`agg`/`orderBy` — receita por período, top vendas, ticket médio |
-| 03 | A · Local | [Joins: Vendas + Funcionários + Empresas](notebooks/03_joins_vendas_funcionarios_empresas.ipynb) | Ranking de vendas por funcionário, receita por setor/período via joins encadeados |
-| 04 | A · Local | [Por Trás dos Panos](notebooks/04_por_tras_dos_panos.ipynb) | Linhagem RDD, DAG, plano Catalyst, Spark SQL, cache, benchmark PySpark vs Pandas |
-| 05 | B · Cluster | [Spark Connect](notebooks/05_spark_connect.ipynb) | Sobe o cluster Standalone, thin client, tour pela Spark UI |
-| 06 | B · Cluster | [Shuffle, Wide vs Narrow, Broadcast Join](notebooks/06_shuffle_broadcast_join.ipynb) | Broadcast de `empresas` vs shuffle join de `funcionarios` |
-| 07 | B · Cluster | [Cache & Storage Levels](notebooks/07_cache_storage_levels.ipynb) | persist/unpersist, níveis de armazenamento, AQE on/off |
-| 08 | C · Hadoop | [HDFS + YARN Bootstrap](notebooks/08_hdfs_yarn_bootstrap.ipynb) | Leitura/escrita via gateway HttpFS, compare com o Caso B |
-| 09 | C · Hadoop | [spark-submit & Deploy Modes](notebooks/09_spark_submit_deploy_modes.ipynb) | Modos cliente vs cluster, ResourceManager UI, Application Master |
-| 10 | C · Hadoop | 🔥 [Caos Lab](notebooks/10_chaos_lab.ipynb) | Mata um NodeManager no meio do job, observa a recomputação via linhagem |
-| 11 | D · S3 | [Spark + RustFS via `s3a://`](notebooks/11_spark_s3_rustfs.ipynb) | Config path-style, Parquet particionado |
-| 12 | D · S3 | [Trade-offs S3 vs HDFS](notebooks/12_s3_vs_hdfs_tradeoffs.ipynb) | Custo de rename/commit, sem localidade, poda de partições |
-| 13 | Capstone | 🏁 [Grand Benchmark](notebooks/13_grand_benchmark.ipynb) | Mesmo job Gold nas 4 arquiteturas + dashboard comparativo |
+| 01 | A · Local | [Primeiros Passos com PySpark](notebooks/01_primeiros_passos_pyspark.ipynb) | `select`, `filter`, `withColumn`, `show`/`collect`/`toPandas` |
+| 02 | A · Local | [Agregações de Negócio](notebooks/02_agregacoes_de_negocio.ipynb) | `groupBy`/`agg`/`orderBy` |
+| 03 | A · Local | [Joins: Vendas + Funcionários + Empresas](notebooks/03_joins_vendas_funcionarios_empresas.ipynb) | Ranking, receita por setor, joins encadeados |
+| 04 | A · Local | [Por Trás dos Panos](notebooks/04_por_tras_dos_panos.ipynb) | Linhagem RDD, DAG, plano Catalyst, Spark SQL |
+| 05 | B · Cluster | [Spark Connect](notebooks/05_spark_connect.ipynb) | Cluster Standalone, thin client, Spark UI |
+| 06 | B · Cluster | [Shuffle, Broadcast Join](notebooks/06_shuffle_broadcast_join.ipynb) | Broadcast vs shuffle join |
+| 07 | B · Cluster | [Cache & Storage Levels](notebooks/07_cache_storage_levels.ipynb) | persist/unpersist, AQE |
+| 08 | B · Cluster | [Múltiplos Formatos](notebooks/08_multiplos_formatos_arquivo.ipynb) | CSV, JSON, Parquet, Bronze→Silver |
+| 10 | D · S3 | [Spark + S3 (RustFS)](notebooks/10_spark_s3_datalake.ipynb) | Datalake em S3 object store, Spark Connect s3 |
+| 11 | C · HDFS | [Spark + HDFS](notebooks/11_spark_hdfs_datalake.ipynb) | Datalake em HDFS via Spark Connect |
+| 13 | Capstone | 🏁 Benchmark | Mesmo job Gold nas 4 arquiteturas |
 
 ---
 
@@ -133,16 +132,15 @@ Abra via `make jupyter`. **Comece com o Lab 00** para validar seu ambiente para 
 ```
 cdn-spark-lab/
 ├── docs/                      # 8 módulos teóricos
-├── notebooks/                 # 14 laboratórios (00-13)
+├── notebooks/                 # 12 laboratórios (00-11)
 ├── scripts/
-│   ├── lab_utils.py           # Fábrica de SparkSession por nível + helpers bronze/silver/gold + helpers de benchmark
+│   ├── lab_utils.py           # Fábrica de SparkSession + helpers bronze/silver/gold + benchmark
 │   ├── generate_dataset.py    # Gerador de dataset sintético (Faker + NumPy, semente fixa)
-│   └── start-hdfs.sh / init-datanode.sh  # Scripts de bootstrap Hadoop
+│   └── start-hdfs.sh / init-datanode.sh  # Scripts de bootstrap HDFS
 ├── config/
-│   ├── hadoop/                # Config XML HDFS/YARN (perfil "hadoop", renderizado a partir de .env)
-│   └── hadoop-client/         # Config do driver no host para modo cliente YARN
+│   └── hadoop/                # Config XML HDFS (profile "hadoop", renderizado a partir de .env)
 ├── tests/
-│   └── test_lab_utils.py      # Testes unitários (sem Docker) — testes end-to-end nbmake rodam via `make test`
+│   └── test_lab_utils.py      # Testes unitários (sem Docker)
 ├── docker-compose.yml         # perfis: cluster, s3, hadoop
 ├── Makefile
 ├── pyproject.toml             # pyspark[connect], boto3, pandas, pyarrow, faker
@@ -155,46 +153,52 @@ cdn-spark-lab/
 
 ```mermaid
 graph TD
-    subgraph "profile: cluster (Cases B & D)"
+    subgraph "⚙️ Spark Cluster — profile cluster (B, C, D)"
         master["🎛️ spark-master<br>Port 7077 / 8080"]
         worker1["⚙️ spark-worker-1"]
         worker2["⚙️ spark-worker-2"]
-        connect["🔌 spark-connect<br>Port 15002"]
         master --- worker1 & worker2
-        connect --> master
     end
 
-    subgraph "profile: s3 (additive to cluster, Case D)"
+    subgraph "🔌 Spark Connect servers (um por caso)"
+        connectB["🔌 spark-connect<br>Port 15002<br>volume /data"]
+        connectD["🔌 spark-connect-s3<br>Port 15003<br>confs S3A"]
+        connectC["🔌 spark-connect-hdfs<br>Port 15004<br>confs HDFS"]
+        connectB --> master
+        connectD --> master
+        connectC --> master
+    end
+
+    subgraph "profile: s3 (additive, Case D)"
         rustfs["🪣 rustfs-server<br>4 drives, RS(4,2)<br>Port 9000 / 9001"]
     end
 
-    subgraph "profile: hadoop (Case C, isolated)"
+    subgraph "profile: hadoop (additive, Case C)"
         namenode["🧠 namenode<br>Port 9870 / 8020"]
         dn1["💾 datanode1"]
         dn2["💾 datanode2"]
-        rm["🚦 resourcemanager<br>Port 8088"]
-        nm1["🏭 nodemanager1"]
-        nm2["🏭 nodemanager2"]
         proxy["🌉 proxy (HttpFS)<br>Port 14000"]
         namenode --- dn1 & dn2
-        rm --- nm1 & nm2
         proxy --> namenode
         proxy --> dn1 & dn2
+        connectC -. "hdfs://" .-> namenode
     end
 
-    host["💻 Host: Jupyter Lab<br>uv + pyspark<br>(driver always runs here)"]
-    host == "spark://" ==> master
-    host == "sc://localhost:15002" ==> connect
+    host["💻 Host: Jupyter Lab<br>uv + pyspark"]
+    host == "sc://localhost:15002" ==> connectB
+    host == "sc://localhost:15003" ==> connectD
+    host == "sc://localhost:15004" ==> connectC
     host == "s3a://" ==> rustfs
-    host == "webhdfs://localhost:14000" ==> proxy
-    host -. "yarn client mode<br>host-gateway" .-> rm
+    host -. "http://localhost:14000" .-> proxy
 
     classDef core fill:#f5f5f5,stroke:#E25A1C,stroke-width:2px;
-    class master,worker1,worker2,connect core;
+    class master,worker1,worker2 core;
+    classDef connect fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px;
+    class connectB,connectD,connectC connect;
     classDef s3 fill:#fff3e0,stroke:#FF8C00,stroke-width:2px;
     class rustfs s3;
     classDef hadoop fill:#e3f2fd,stroke:#66CCFF,stroke-width:2px;
-    class namenode,dn1,dn2,rm,nm1,nm2,proxy hadoop;
+    class namenode,dn1,dn2,proxy hadoop;
 ```
 
 ---
@@ -206,25 +210,26 @@ graph TD
 make generate-data SCALE=small|large  # Gera empresas/funcionarios/vendas
 
 # ── Infraestrutura ──────────────────────────────────────────────────
-make spark           # Caso B — Spark Standalone + Spark Connect
-make s3              # Caso D — cluster + RustFS
-make hadoop          # Caso C — HDFS + YARN
-make down            # Para tudo (qualquer perfil)
+make spark           # Caso B — Spark Standalone + Spark Connect (porta 15002)
+make s3              # Caso D — adiciona RustFS + Spark Connect S3 (15003)
+make hadoop          # Caso C — adiciona HDFS + Spark Connect HDFS (15004)
+make full            # Tudo: Spark + RustFS + HDFS
+make down            # Para tudo
 make clean           # Destrói containers, volumes E dados locais/HDFS
 make clean-data      # Limpa apenas datasets gerados em data/ e temp/
 make status          # Mostra containers em execução
 make logs            # Exibe logs de todos os containers em execução
-make shell-<name>    # Acessa o shell de qualquer container (spark-master, namenode, ...)
+make shell-<name>    # Acessa o shell de qualquer container
 
 # ── Ambiente Python ────────────────────────────────────────────────
-make setup-env       # Cria .venv com uv, registra kernel Jupyter, configura nbstripout
-make jupyter         # Inicia o Jupyter Lab (mesmo comando para todos os 4 casos)
+make setup-env       # Cria .venv com uv, registra kernel Jupyter
+make jupyter         # Inicia o Jupyter Lab (mesmo comando para todos os casos)
 
 # ── Qualidade ───────────────────────────────────────────────────────
-make strip           # Remove todas as saídas dos notebooks (execute antes de commitar)
-make check           # Verifica se os notebooks estão sem saídas (gate de CI)
+make strip           # Remove todas as saídas dos notebooks
+make check           # Verifica se os notebooks estão sem saídas
 make lint            # Executa ruff em scripts/ e notebooks/
-make test            # Executa pytest + nbmake testes end-to-end nos notebooks (perfil relevante deve estar rodando)
+make test            # Executa pytest + nbmake
 ```
 
 ---
@@ -240,21 +245,18 @@ make spark
 make test
 ```
 
-`make check` (verificação de stripping de notebooks) e `make lint` são feitos para rodar em CI; testes end-to-end `nbmake` são intencionalmente apenas locais, pois precisam de Docker multi-serviço mais pesado que um runner de CI padrão.
-
 ---
 
 ## 📄 Licença e Referências
 
 Este projeto é disponibilizado sob a [Licença MIT](LICENSE).
 
-> **Material educacional aberto.** Criado para as aulas práticas da disciplina **Data Science for Business** (UFPB). Desenvolvido por Hilton Martins. Terceiro laboratório da série Big Data, após [`cdn-hadoop-lab`](https://github.com/hiltonmbr/cdn-hadoop-lab) e [`cdn-s3-lab`](https://github.com/hiltonmbr/cdn-s3-lab).
+> **Material educacional aberto.** Criado para as aulas práticas da disciplina **Data Science for Business** (UFPB). Desenvolvido por Hilton Martins.
 
 ### Referências
 
 - [Documentação do Apache Spark](https://spark.apache.org/docs/latest/)
 - [Visão Geral do Spark Connect](https://spark.apache.org/docs/latest/spark-connect-overview.html)
-- [Apache Hadoop YARN](https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YARN.html)
 - [WebHDFS REST API](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/WebHDFS.html)
 - [Módulo Hadoop-AWS (`s3a://`)](https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/index.html)
 - [Documentação Oficial do RustFS](https://docs.rustfs.com)

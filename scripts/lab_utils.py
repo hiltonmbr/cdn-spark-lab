@@ -1,11 +1,11 @@
 """Utilitários compartilhados para todos os notebooks do cdn-spark-lab.
 
-Centraliza a criação da SparkSession para os 4 casos (local / Spark Connect /
-YARN+HDFS / Spark Connect+S3), além de pequenos auxiliares para o layout
+Centraliza a criação da SparkSession para os casos (local / Spark Connect /
+Spark Connect S3 / Spark Connect HDFS), além de pequenos auxiliares para o layout
 medallion Bronze/Silver/Gold e o benchmark do Lab 13.
 
 Nota pedagógica: construir a SparkSession *é* a lição nos Labs 01
-(local), 05 (Spark Connect) e 08 (YARN) — esses notebooks inserem a mesma
+(local), 06 (Spark Connect) e 11 (HDFS) — esses notebooks inserem a mesma
 cadeia `.builder...getOrCreate()` definida abaixo manualmente em vez de chamar
 essas fábricas, para que a mecânica da conexão permaneça visível em vez de ficar
 oculta atrás de uma chamada de uma linha. Todos os outros notebooks já viram essa
@@ -52,46 +52,18 @@ def get_connect_session(app_name: str = "cdn-spark-lab-connect") -> SparkSession
     return SparkSession.builder.appName(app_name).remote("sc://localhost:15002").getOrCreate()
 
 
-def get_yarn_session(app_name: str = "cdn-spark-lab-yarn") -> SparkSession:
-    """Caso C: modo client contra um cluster YARN dockerizado (`make up-hadoop`).
+def get_connect_session_s3(app_name: str = "cdn-spark-lab-s3") -> SparkSession:
+    """Caso D: Spark Connect com confs S3A (make s3).
+    Conecta ao spark-connect-s3 na porta 15003. O cluster já tem as confs
+    S3A que apontam para o RustFS (docker-compose.yml profile s3)."""
+    return SparkSession.builder.appName(app_name).remote("sc://localhost:15003").getOrCreate()
 
-    O driver executa no seu HOST (este processo), mas os executores rodam dentro
-    dos contêineres nodemanager1/nodemanager2. Para que os executores chamem de volta
-    este driver, o docker-compose.yml fornece `host.docker.internal` via
-    entrada extra_hosts `host-gateway` do Docker — daí o `spark.driver.host`
-    abaixo. Consulte docs/07-spark-e-hdfs.md para a explicação completa, incluindo por que
-    este caso usa `webhdfs://` em vez de `hdfs://` para toda E/S.
-    """
-    import os
 
-    # O Spark precisa do HADOOP_CONF_DIR para encontrar o ResourceManager. Esta é uma
-    # configuração APENAS do HOST (localhost + portas publicadas), separada do
-    # config/hadoop/ (usado pelos próprios contêineres) — consulte
-    # config/hadoop-client/ para entender o motivo.
-    os.environ["HADOOP_CONF_DIR"] = str(Path(__file__).resolve().parent.parent / "config" / "hadoop-client")
-    # Sem Kerberos, o HDFS confia em qualquer nome de usuário que o cliente informar.
-    # O nome de usuário do seu sistema host quase certamente não é "root" (o proprietário de "/"
-    # neste cluster, já que todo contêiner no perfil "hadoop" executa como
-    # root) — isso faz o driver se identificar como "root" também, evitando um
-    # AccessControlException espúrio no diretório de staging do YARN.
-    os.environ["HADOOP_USER_NAME"] = "root"
-
-    return (
-        SparkSession.builder.appName(app_name)
-        .master("yarn")
-        .config("spark.submit.deployMode", "client")
-        .config("spark.driver.host", "host.docker.internal")
-        .config("spark.driver.bindAddress", "0.0.0.0")
-        .config("spark.executor.memory", "2g")
-        .config("spark.executor.cores", "2")
-        .config("spark.yarn.am.memory", "1g")
-        # Usa os jars do Spark já montados nos contêineres NodeManager
-        # (docker-compose.yml) em vez de fazer o YARN distribuí-los
-        # via HDFS — contorna a incompatibilidade de hostname entre driver e contêiner
-        # que o staging incorporaria. Consulte docs/07.
-        .config("spark.yarn.jars", "local:/opt/spark-jars/*")
-        .getOrCreate()
-    )
+def get_connect_session_hdfs(app_name: str = "cdn-spark-lab-hdfs") -> SparkSession:
+    """Caso C: Spark Connect com confs HDFS (make hadoop).
+    Conecta ao spark-connect-hdfs na porta 15004. O cluster já tem
+    fs.defaultFS=hdfs://namenode:8020 (docker-compose.yml profile hadoop)."""
+    return SparkSession.builder.appName(app_name).remote("sc://localhost:15004").getOrCreate()
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +76,7 @@ LAYER_ROOTS = {
     # (cwd do Jupyter), pytest (raiz do repositório) ou qualquer outro lugar.
     "local": str(DATA_DIR),
     "connect": "/data",  # Casos B/D: volume compartilhado, resolvido dentro dos contêineres
-    "hdfs": "webhdfs://localhost:14000/datalake",  # Caso C: via gateway HttpFS
+    "hdfs": "hdfs://namenode:8020/datalake",  # Caso C: HDFS nativo via Spark Connect
     "s3": "s3a://{layer}",  # Variante de armazenamento Caso D: buckets bronze/silver/gold
 }
 
@@ -126,10 +98,8 @@ def upload_bronze_table_to_hdfs(
     """Faz upload de uma tabela bronze gerada localmente (consulte generate_dataset.py) para
     o HDFS através do gateway HttpFS, preservando a estrutura de pastas particionadas.
 
-    Os executores do Caso C rodam dentro de nodemanager1/nodemanager2, que não têm
-    acesso ao ./data do host — diferente dos Casos B/D, onde o volume compartilhado
-    do Docker torna os dados visíveis para os contêineres automaticamente. Este é o
-    passo de inicialização único que coloca os dados no HDFS.
+    Os workers Spark não têm acesso ao ./data do host (não há volume compartilhado) —
+    este é o passo de inicialização único que coloca os dados no HDFS.
     """
     from hdfs import InsecureClient
 

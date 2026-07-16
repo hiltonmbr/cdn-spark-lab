@@ -26,7 +26,7 @@ def test_layer_path_connect():
 def test_layer_path_hdfs():
     assert (
         lab_utils.layer_path("hdfs", "gold", "vendas_por_regiao")
-        == "webhdfs://localhost:14000/datalake/gold/vendas_por_regiao"
+        == "hdfs://namenode:8020/datalake/gold/vendas_por_regiao"
     )
 
 

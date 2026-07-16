@@ -1,13 +1,13 @@
-# 📂 Spark + HDFS (via YARN)
+# 📂 Spark + HDFS (via Spark Connect)
 
 ## Lendo e Escrevendo no HDFS
 
 Spark não é um sistema de armazenamento — ele lê e escreve em fontes externas. A integração com HDFS é nativa:
 
 ```python
-# Esquema RPC nativo, usado quando o Driver executa dentro do cluster
-df = spark.read.text("hdfs://namenode:8020/user/data/logs.txt")
-df.write.mode("overwrite").parquet("hdfs://namenode:8020/lake/gold/report/")
+# Esquema RPC nativo, usado pelo Spark Connect dentro da rede Docker
+df = spark.read.parquet("hdfs://namenode:8020/datalake/bronze/vendas")
+df.write.mode("overwrite").parquet("hdfs://namenode:8020/datalake/gold/vendas_por_setor/")
 ```
 
 **Atenção**: o diretório de saída não deve **já existir** (a menos que você use `.mode("overwrite")`). Spark grava saída particionada — o "arquivo de saída" é na verdade um **diretório** contendo múltiplos `part-00000`, `part-00001`, etc., um por partição.
@@ -24,34 +24,98 @@ df.write.mode("overwrite").parquet("hdfs://namenode:8020/lake/gold/report/")
 
 **Regra prática**: para pipelines de Big Data, **Parquet é o padrão de facto** — o mesmo formato usado nos módulos de Hadoop e Object Storage nas camadas Silver/Gold. Ele permite que o Catalyst faça predicate e projection pushdown, lendo apenas as colunas e partições realmente necessárias.
 
-## Por Que Este Lab Usa `webhdfs://`, Não `hdfs://`
+## Arquitetura: Spark Connect + HDFS (sem YARN)
 
-Em um deployment Spark-on-YARN tradicional, o Driver executa **dentro** do cluster (`--deploy-mode cluster`), na mesma rede do NameNode e dos DataNodes — então `hdfs://namenode:8020/...` resolve corretamente para todos os envolvidos.
+O Caso C agora usa **Spark Connect** contra um cluster **HDFS puro** — sem YARN, sem `host.docker.internal`, sem `config/hadoop-client/`.
 
-Este laboratório mantém intencionalmente o Driver em **seu host** para cada caso (Caso C incluso), então `make jupyter-lab` é o mesmo comando em toda parte. Isso tem uma consequência real: seu processo Driver precisa resolver o hostname do NameNode e, para RPC nativo, o hostname de cada DataNode também (as transferências de bloco são diretas DataNode↔cliente). Contêineres Docker não são acessíveis por nome a partir do host sem configuração extra em nível de host.
-
-A solução já presente no perfil `hadoop` do `docker-compose.yml`: um gateway **HttpFS** (serviço `proxy`, porta `14000`) que fala o protocolo REST WebHDFS e internamente faz proxy de **toda** a comunicação NameNode/DataNode — incluindo a transferência de dados, não apenas metadados. Seu Driver só precisa conhecer **um** hostname (`localhost:14000`), independentemente de quantos DataNodes existam por trás:
-
-```python
-df = spark.read.parquet("webhdfs://localhost:14000/datalake/bronze/vendas")
-df.write.mode("overwrite").parquet("webhdfs://localhost:14000/datalake/silver/vendas")
+```
+┌──────────────────────────────────────────────────────┐
+│                     labnet (Docker)                    │
+│                                                        │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
+│  │ namenode │  │ datanode1│  │ datanode2│            │
+│  │ :8020    │  │          │  │          │            │
+│  └────┬─────┘  └──────────┘  └──────────┘            │
+│       │          HDFS cluster                          │
+│  ┌────▼─────┐                                        │
+│  │  proxy   │  HttpFS (upload de dados do host)      │
+│  │ :14000   │                                        │
+│  └──────────┘                                        │
+│                                                        │
+│  ┌─────────────────────────────────┐                  │
+│  │  Spark Standalone Cluster       │                  │
+│  │  ┌──────────┐  ┌──────────────┐ │                  │
+│  │  │ master   │  │ spark-connect│ │  hdfs://         │
+│  │  │ :7077    │  │ :15004  ────────► namenode:8020   │
+│  │  └──────────┘  └──────────────┘ │                  │
+│  │  ┌──────────┐ ┌──────────────┐  │                  │
+│  │  │ worker-1 │ │   worker-2   │  │                  │
+│  │  └──────────┘ └──────────────┘  │                  │
+│  └─────────────────────────────────┘                  │
+└──────────────────────────────────────────────────────┘
+         ▲                           ▲
+         │ http://localhost:14000    │ sc://localhost:15004
+         │ (upload via hdfs lib)     │ (Spark Connect)
+         │                           │
+    ┌────┴───────────────────────────┴────┐
+    │         Jupyter (host)               │
+    │   notebook 11: Spark + HDFS          │
+    └────────────────────────────────────┘
 ```
 
-Os Executors (executando dentro dos contêineres `nodemanager1`/`nodemanager2`, na mesma rede Docker que o gateway) usam a URL exata — Spark passa a string do caminho como está para cada worker, então não é necessário truque de esquema duplo.
+**Principais diferenças do Caso C antigo (YARN):**
 
-> 💡 **Isto por si só é um momento de aprendizado.** A fricção que você está evitando aqui — resolução de hostname através da fronteira cliente/cluster — é precisamente por que jobs reais Spark-on-YARN em produção executam em `--deploy-mode cluster`, não `client`, conforme abordado em docs/01. Você está vendo, na prática, por que essa recomendação existe.
+| Aspecto | Antigo (YARN) | Novo (Spark Connect) |
+|---------|---------------|---------------------|
+| Spark driver | No HOST (client mode) | No container (Spark Connect server) |
+| Gerenciador de recursos | YARN (ResourceManager + NodeManagers) | Spark Standalone (master + workers) |
+| Acesso HDFS | `webhdfs://localhost:14000` (via HttpFS) | `hdfs://namenode:8020` (nativo RPC) |
+| Config do host | `config/hadoop-client/` | Nenhuma (não precisa) |
+| Network trick | `host.docker.internal` | Nenhum (tudo na mesma rede Docker) |
+| Upload de dados | `upload_bronze_table_to_hdfs()` | Mesmo — via HttpFS `localhost:14000` |
 
-## Configurando Acesso ao HDFS
+## Por Que `hdfs://` Agora Funciona
 
-Em um deployment "tradicional" (Driver dentro do cluster), o Spark precisa dos arquivos de configuração do Hadoop em seu classpath:
+No Caso C antigo, o Spark driver executava no HOST e os executores dentro de containers. O driver não conseguia resolver `hdfs://namenode:8020` porque:
+1. O hostname `namenode` não era resolvível a partir do host
+2. As conexões de dados (DataNode↔cliente) precisavam de `host.docker.internal`
 
-- **`core-site.xml`** — o endereço do NameNode (ex.: `hdfs://namenode:8020`).
-- **`hdfs-site.xml`** — fator de replicação, tamanho de bloco, caminhos de armazenamento.
+A solução foi usar `webhdfs://localhost:14000` — o gateway HttpFS como intermediário.
 
-**Na prática**: quando o Spark executa no **YARN**, estes são herdados automaticamente da instalação Hadoop. Em ambientes **cloud** (EMR, Dataproc), o provedor já configura o acesso S3/GCS. Configuração manual só é necessária para clusters **Standalone** ou **Kubernetes** conectando-se a um HDFS externo — que é exatamente a situação `webhdfs://` deste laboratório, contornada no nível do gateway em vez do nível do classpath.
+No novo Caso C, **tudo executa dentro da rede Docker**:
+- O Spark Connect server é um container na mesma rede do HDFS
+- Os workers também estão na mesma rede
+- `namenode:8020` é resolvível via Docker DNS
+- As conexões de dados (DataNode↔worker) funcionam porque `dfs.client.use.datanode.hostname=true` e `datanode1`/`datanode2` são resolvíveis via Docker DNS
+
+Portanto, `hdfs://namenode:8020` funciona sem truques.
+
+## HttpFS: Só para Upload
+
+O gateway HttpFS (serviço `proxy`, porta `14000`) ainda existe, mas seu uso é restrito ao **upload inicial de dados** do host para o HDFS:
+
+```python
+from hdfs import InsecureClient
+client = InsecureClient("http://localhost:14000", user="root")
+client.write("/datalake/bronze/vendas/ano=2024/mes=1/part-000.parquet", data, overwrite=True)
+```
+
+Uma vez que os dados estão no HDFS, todo o processamento Spark usa `hdfs://namenode:8020` diretamente.
+
+## hdfs:// vs webhdfs:// na Prática
+
+| | `hdfs://namenode:8020` | `webhdfs://proxy:14000` |
+|---|---|---|
+| Protocolo | RPC nativo (binário) | HTTP/REST |
+| Performance | Máxima (I/O direto) | Menor (overhead HTTP) |
+| Resolução de hostname | Precisa de DNS Docker | Apenas `proxy` |
+| Ideal para | Processamento Spark | Upload / debug |
+
+No notebook 11, você verá **ambos os protocolos** funcionando — e o plano Catalyst é idêntico para os dois. Isso prova que o Spark abstrai completamente o sistema de arquivos.
 
 ## O Que Você Verá Neste Laboratório
 
-- O Lab 08 grava o pipeline Bronze→Silver→Gold no HDFS via gateway e compara com a versão de volume compartilhado do Caso B.
-- O Lab 09 percorre `spark-submit`, modos de deploy e a interface do YARN ResourceManager (`localhost:8088`) — veja o Application Master e os contêineres executor serem agendados ao vivo.
-- O Lab 10 (🔥 laboratório caótico) mata um NodeManager no meio do job e observa o YARN reagendar as Tasks perdidas no sobrevivente, recomputando apenas o que foi perdido via linhagem.
+- Notebook 11 — pipeline completo Bronze→Silver→Gold no HDFS via Spark Connect
+- Upload de dados via HttpFS + processamento via `hdfs://` nativo
+- Comparação entre `hdfs://` e `webhdfs://` — mesmos dados, mesmo resultado
+- Comparação HDFS × S3 — mesmo notebook, dois storages diferentes

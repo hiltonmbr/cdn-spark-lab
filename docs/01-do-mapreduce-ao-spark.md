@@ -57,4 +57,4 @@ spark-submit \
 
 ## O Que Você Verá Neste Laboratório
 
-Ao longo dos 4 casos, o Cluster Manager muda (`local[*]` → Standalone → YARN → Standalone novamente), mas a arquitetura Driver/Executor e a escolha do modo de deploy permanecem exatamente as mesmas. O Caso C (YARN) é deliberadamente executado em **client mode com o driver no seu host** — você sentirá na prática por que o Spark em produção quase sempre prefere o cluster mode.
+Ao longo dos 4 casos, o Cluster Manager muda (`local[*]` → Standalone → Spark Connect → Standalone), mas a arquitetura Driver/Executor permanece. O Caso C agora usa **Spark Connect contra HDFS nativo** (`hdfs://namenode:8020`), sem YARN — o Spark é apenas motor, o HDFS é apenas storage.

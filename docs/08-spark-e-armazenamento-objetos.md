@@ -48,4 +48,4 @@ Sistemas de arquivos tradicionais (incluindo HDFS) implementam `rename()` como u
 ## O Que Você Verá Neste Laboratório
 
 - O Lab 11 conecta-se ao RustFS via `s3a://` e executa o mesmo pipeline Bronze→Silver→Gold dos Casos B e C, escrevendo nos buckets `bronze`/`silver`/`gold` criados por `make up-s3`.
-- O Lab 12 compara a mesma operação de escrita contra HDFS (Caso C) e RustFS (Caso D), medindo a sobrecarga de commit/rename diretamente, e demonstra o partition pruning comparando uma varredura completa de tabela contra uma leitura filtrada em `ano=2026/mes=07/`.
+- Os notebooks 10 (Spark Connect + RustFS S3) e 11 (Spark Connect + HDFS, em notebook separado) executam o mesmo pipeline contra dois storages diferentes — S3 (object store) e HDFS (filesystem) — demonstrando que o Spark abstrai completamente o sistema de armazenamento.

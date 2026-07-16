@@ -6,27 +6,28 @@ ALL_PROFILES := --profile cluster --profile s3 --profile hadoop
         status logs shell-% setup-env jupyter strip check lint test
 
 help:
-	@echo "⚡✨ Bem-vindo ao Spark Lab! De local[*] ao YARN+HDFS e S3! ✨⚡"
+	@echo "⚡✨ Bem-vindo ao Spark Lab! De local[*] ao HDFS e S3! ✨⚡"
 	@echo "🚀 Escolha sua aventura abaixo:"
 	@echo ""
 	@echo "  🧬 make generate-data SCALE=small|large - 🏭 Gera o dataset sintético de vendas/clientes/categorias"
 	@echo ""
-	@echo "  🔥 make spark       - 🏗️  Inicia o Spark Cluster (master + 2 workers + Spark Connect) — Caso B"
-	@echo "  🪣 make s3            - 🏗️  Inicia o cluster + RustFS (4 drives, Erasure Coding) — Caso D"
-	@echo "  🐘 make hadoop        - 🏗️  Inicia HDFS + YARN (2 DataNodes, 2 NodeManagers) — Caso C"
-	@echo "  🛑 make down             - 😴 Para tudo (qualquer profile)"
+	@echo "  🔥 make spark       - 🏗️  Spark cluster (master + 2 workers + Spark Connect) — Caso B"
+	@echo "  🪣 make s3            - 🏗️  Adiciona RustFS + Spark Connect S3 — Caso D (requer make spark)"
+	@echo "  🏔️  make hadoop        - 🏗️  Adiciona HDFS + Spark Connect HDFS — Caso C (requer make spark)"
+	@echo "  🔥 make full          - 🏗️  Tudo: Spark + RustFS + HDFS"
+	@echo "  🛑 make down             - 😴 Para tudo"
 	@echo "  💣 make clean            - ☢️  Destrói containers, volumes E dados locais/HDFS"
 	@echo "  🧹 make clean-data       - 🗑️  Limpa apenas datasets gerados em data/ e temp/"
-	@echo "  📡 make status           - 🔍 Mostra containers em execução (qualquer profile)"
+	@echo "  📡 make status           - 🔍 Mostra containers em execução"
 	@echo "  📜 make logs             - 📋 Exibe logs de todos os containers em execução"
-	@echo "  🐚 make shell-<name>     - 👨‍💻 Abre um shell em qualquer container (spark-master, namenode, datanode1, ...)"
+	@echo "  🐚 make shell-<name>     - 👨‍💻 Abre um shell em qualquer container"
 	@echo ""
 	@echo "  🐍 make setup-env        - 🪄  Cria o Python venv e instala dependências com uv"
-	@echo "  📓 make jupyter          - 🚀 Inicia o Jupyter Lab (mesmo comando para os 4 casos)"
+	@echo "  📓 make jupyter          - 🚀 Inicia o Jupyter Lab"
 	@echo "  🧹 make strip            - ✂️  Remove todas as saídas dos notebooks"
-	@echo "  🔍 make check            - 🧪 Verifica se os notebooks estão sem saídas (seguro para CI)"
+	@echo "  🔍 make check            - 🧪 Verifica se os notebooks estão sem saídas"
 	@echo "  🎨 make lint             - 🐍 Executa o ruff linter em scripts/ e notebooks/"
-	@echo "  🧪 make test             - 🔬 Executa pytest + nbmake para testes de ponta a ponta nos notebooks"
+	@echo "  🧪 make test             - 🔬 Executa pytest + nbmake"
 	@echo ""
 
 generate-data:
@@ -37,30 +38,37 @@ spark:
 	@echo "🔥⚡ Iniciando cluster Spark (master + 2 workers + Spark Connect)... 🚀"
 	docker compose --profile cluster up -d
 	@echo ""
-	@echo "🎉 Cluster está no ar!"
+	@echo "🎉 Cluster Spark está no ar!"
 	@echo "   🖥️  Master UI:       http://localhost:8080"
 	@echo "   🖥️  Worker UIs:      http://localhost:8081  http://localhost:8082"
-	@echo "   🔌 Spark Connect:   sc://localhost:15002"
+	@echo "   🔌 Spark Connect:   sc://localhost:15002        (Caso B — volume /data)"
 	@echo "   📊 Spark App UI:    http://localhost:4040"
 
 s3:
-	@echo "🔥⚡ Iniciando cluster Spark Standalone + RustFS (4 drives, Erasure Coding)... 🚀"
-	docker compose --profile cluster --profile s3 up -d
+	@echo "🪣⚡ Adicionando RustFS + Spark Connect S3 ao cluster Spark..."
+	docker compose --profile s3 up -d
 	@echo ""
-	@echo "🎉 Cluster + Object Storage estão no ar!"
-	@echo "   🔌 Spark Connect:   sc://localhost:15002"
+	@echo "🎉 Object Storage no ar!"
+	@echo "   🔌 Spark Connect:   sc://localhost:15003        (Caso D — S3A object store)"
 	@echo "   🌐 S3 API:          http://localhost:9000"
 	@echo "   🖥️  RustFS Console:  http://localhost:9001  (admin / adminpassword)"
 
 hadoop:
-	@echo "🐘✨ Iniciando HDFS + YARN (2 DataNodes, 2 NodeManagers)... 🚀"
+	@echo "🏔️⚡ Adicionando HDFS + Spark Connect HDFS ao cluster Spark..."
 	docker compose --profile hadoop up -d
 	@echo ""
-	@echo "🎉 Cluster Hadoop está no ar!"
-	@echo "   🧠 NameNode UI:         http://localhost:9870"
-	@echo "   🚦 ResourceManager UI:  http://localhost:8088"
-	@echo "   🌉 HttpFS gateway:      http://localhost:14000"
-	@echo "   💡 O Spark driver executa no seu HOST neste caso também — veja docs/07."
+	@echo "🎉 HDFS no ar!"
+	@echo "   🔌 Spark Connect:   sc://localhost:15004        (Caso C — HDFS nativo hdfs://)"
+	@echo "   🧠 NameNode UI:     http://localhost:9870"
+	@echo "   🌉 HttpFS gateway:  http://localhost:14000  (upload de dados do host)"
+
+full:
+	@echo "🔥🪣🏔️  Levantando Spark + RustFS + HDFS..."
+	docker compose $(ALL_PROFILES) up -d
+	@echo "🎉 Tudo no ar!"
+	@echo "   🔌 Spark Connect B: sc://localhost:15002  (volume /data)"
+	@echo "   🔌 Spark Connect D: sc://localhost:15003  (S3A object store)"
+	@echo "   🔌 Spark Connect C: sc://localhost:15004  (HDFS nativo)"
 
 down:
 	@echo "😴 Parando tudo... 🌙"
@@ -125,4 +133,4 @@ lint:
 
 test:
 	@echo "🧪 Executando testes dos notebooks (o profile docker relevante deve estar em execução)..."
-	uv run pytest tests/ --nbmake --nbmake-timeout=600 -v
+	uv run pytest tests/ notebooks/ --nbmake --nbmake-timeout=600 -v

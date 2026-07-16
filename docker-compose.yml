@@ -6,6 +6,12 @@ x-spark-common: &spark-common
     - ./data:/data
   user: root
 
+x-spark-novol-common: &spark-novol-common
+  image: apache/spark:3.5.3
+  networks:
+    - labnet
+  user: root
+
 x-hadoop-common: &hadoop-common
   image: apache/hadoop:3.5.0
   user: root
@@ -21,9 +27,10 @@ x-hadoop-common: &hadoop-common
 
 services:
   # ===========================================================================
-  # profile "cluster" — Spark Standalone (master + 2 workers) + Spark Connect
-  # Usado pelo Caso B (cluster + volume compartilhado) e Caso D (cluster + S3,
-  # adicione o profile "s3" sobre este).
+  # profile "cluster" (default) — Spark Standalone (master + 2 workers) + Spark Connect
+  # Sempre presente. Usado pelo Caso B (volume compartilhado).
+  # Os profiles "s3" e "hadoop" reutilizam estes mesmos master/workers —
+  # cada um adiciona seu próprio Spark Connect server em porta diferente.
   # ===========================================================================
   spark-master:
     <<: *spark-common
@@ -31,8 +38,8 @@ services:
     hostname: spark-master
     command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master" ]
     ports:
-      - "7077:7077" # RPC do Spark master — spark://localhost:7077
-      - "8080:8080" # Web UI do Master
+      - "7077:7077"
+      - "8080:8080"
     profiles: [ "cluster" ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:8080 || exit 1" ]
@@ -45,12 +52,6 @@ services:
     <<: *spark-common
     container_name: spark-worker-1
     hostname: spark-worker-1
-    # Baixa o mesmo jar do Spark Connect que o container spark-connect usa
-    # (veja o comentário no serviço spark-connect). Os executores rodam
-    # AQUI, nos workers — se a classe que desserializa o closure de
-    # coleta/Arrow do Spark Connect não existir no classpath do worker
-    # também, a task falha com ClassCastException (SerializedLambda não
-    # resolve para a implementação real do closure).
     command:
       - /bin/bash
       - -c
@@ -63,16 +64,13 @@ services:
       spark-master:
         condition: service_healthy
     ports:
-      - "8081:8081" # Web UI do Worker
+      - "8081:8081"
     profiles: [ "cluster" ]
 
   spark-worker-2:
     <<: *spark-common
     container_name: spark-worker-2
     hostname: spark-worker-2
-    # Veja o comentário em spark-worker-1 / spark-connect: os executores
-    # precisam do jar do Spark Connect no próprio classpath para desserializar
-    # os closures de coleta/Arrow que o Spark Connect usa internamente.
     command:
       - /bin/bash
       - -c
@@ -85,39 +83,24 @@ services:
       spark-master:
         condition: service_healthy
     ports:
-      - "8082:8081" # Web UI do Worker (mapeada para uma porta host diferente)
+      - "8082:8081"
     profiles: [ "cluster" ]
 
   spark-connect:
     <<: *spark-common
     container_name: spark-connect
     hostname: spark-connect
-    # Baixamos o jar do Spark Connect direto para /opt/spark/jars/ (em vez de
-    # usar --packages) e fazemos o MESMO em spark-worker-1/2 (veja os
-    # comentários lá). Motivo: o Spark Connect executa parte da sua lógica de
-    # coleta/conversão para Arrow como um closure rodando via mapPartitions —
-    # ou seja, DENTRO dos executores (workers), não só no Driver. Se esse jar
-    # não estiver no classpath do worker também, a desserialização da task
-    # falha com "ClassCastException: cannot assign instance of
-    # SerializedLambda to field ... of type scala.Function3" — o worker
-    # recebe a referência ao closure mas não tem a classe que o implementa.
-    # --packages sozinho (populando spark.jars) NÃO resolve isso de forma
-    # confiável para esse closure específico; colocando o jar diretamente no
-    # classpath estático (-cp .../jars/*) de cada container, ele já está lá
-    # antes mesmo da JVM subir. Testado: com o jar só no Driver, o erro
-    # persiste; com o jar também nos workers, `count()`/`groupBy()` via
-    # Spark Connect funcionam normalmente.
     command:
       - /bin/bash
       - -c
       - >
-        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect --conf spark.connect.grpc.binding.port=15002 --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000 --conf spark.hadoop.fs.s3a.access.key=admin --conf spark.hadoop.fs.s3a.secret.key=adminpassword --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect --conf spark.connect.grpc.binding.port=15002
     depends_on:
       spark-master:
         condition: service_healthy
     ports:
-      - "15002:15002" # Endpoint gRPC do Spark Connect — sc://localhost:15002
-      - "4040:4040" # Spark UI para o driver da sessão Connect
+      - "15002:15002"
+      - "4040:4040"
     profiles: [ "cluster" ]
     healthcheck:
       test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15002' || exit 1" ]
@@ -127,11 +110,32 @@ services:
       start_period: 30s
 
   # ===========================================================================
-  # profile "s3" — RustFS single node, 4 drives, Erasure Coding RS(4,2).
-  # Mesmo padrão do cdn-s3-lab. Aditivo ao profile "cluster" -> Caso D.
-  # A configuração do conector s3a acima (no spark-connect) já aponta para
-  # rustfs-server, então este profile só precisa ser *adicionado*, não substituído.
+  # profile "s3" — RustFS + Spark Connect S3 (porta 15003).
+  # Aditivo ao profile "cluster". Uso: make s3
   # ===========================================================================
+  spark-connect-s3:
+    <<: *spark-novol-common
+    container_name: spark-connect-s3
+    hostname: spark-connect-s3
+    command:
+      - /bin/bash
+      - -c
+      - >
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect-s3 --conf spark.connect.grpc.binding.port=15003 --conf spark.hadoop.fs.s3a.endpoint=http://rustfs-server:9000 --conf spark.hadoop.fs.s3a.access.key=admin --conf spark.hadoop.fs.s3a.secret.key=adminpassword --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "15003:15003"
+      - "4041:4040"
+    profiles: [ "s3" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15003' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
   rustfs-perms:
     image: alpine:latest
     container_name: rustfs-perms
@@ -192,17 +196,16 @@ services:
       /bin/sh -c " /usr/bin/mc alias set rustfs http://rustfs-server:9000 admin adminpassword; /usr/bin/mc mb rustfs/bronze || true; /usr/bin/mc mb rustfs/silver || true; /usr/bin/mc mb rustfs/gold || true; echo 'Buckets bronze/silver/gold ready.'; exit 0; "
 
   # ===========================================================================
-  # profile "hadoop" — HDFS + YARN, reduzido para 2 DataNodes / 2 NodeManagers.
-  # Usado exclusivamente pelo Caso C. Isolado do "cluster" — o Spark aqui
-  # executa *dentro* de containers YARN, não como serviços spark-worker pré-existentes.
+  # profile "hadoop" — HDFS + Spark Connect HDFS (porta 15004).
+  # Reutiliza o master/workers do profile "cluster". Uso: make hadoop
   # ===========================================================================
   namenode:
     <<: *hadoop-common
     container_name: namenode
     hostname: namenode
     ports:
-      - "9870:9870" # Web UI do NameNode
-      - "8020:8020" # RPC do NameNode
+      - "9870:9870"
+      - "8020:8020"
     command: [ "/bin/bash", "/scripts/start-hdfs.sh" ]
     healthcheck:
       test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.hdfs.server.namenode.NameNode'" ]
@@ -244,79 +247,6 @@ services:
       start_period: 60s
     profiles: [ "hadoop" ]
 
-  resourcemanager:
-    <<: *hadoop-common
-    container_name: resourcemanager
-    hostname: resourcemanager
-    command: [ "yarn", "resourcemanager" ]
-    ports:
-      - "8088:8088" # Web UI do ResourceManager
-      - "8032:8032" # RPC do cliente (submissão de jobs) — usado pelo driver do host, veja config/hadoop-client/
-      - "8030:8030" # RPC do Scheduler — usado pelo driver do host
-    healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.resourcemanager.ResourceManager'" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles: [ "hadoop" ]
-
-  nodemanager1:
-    <<: *hadoop-common
-    container_name: nodemanager1
-    hostname: nodemanager1
-    command: [ "yarn", "nodemanager" ]
-    depends_on:
-      resourcemanager:
-        condition: service_started
-    # Executores e o ApplicationMaster executam como processos dentro deste
-    # container. host.docker.internal permite que eles se conectem ao Spark
-    # driver, que executa no HOST para todos os casos deste laboratório
-    # (veja docs/07).
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    # Jars do Spark, montados como bind read-only do uv venv do host (veja
-    # `spark.yarn.jars=local:/opt/spark-jars/*` em lab_utils.py). Isso permite
-    # que o ApplicationMaster/executores encontrem as classes do Spark
-    # localmente em vez do YARN tentar distribuí-las via HDFS — o que
-    # gravaria uma URI "localhost:14000" da perspectiva do driver que
-    # significa algo diferente dentro deste container (veja docs/07). Requer
-    # que `make setup-env` tenha sido executado pelo menos uma vez antes de
-    # `make up-hadoop`.
-    volumes:
-      - ./config/hadoop:/opt/hadoop/etc/hadoop
-      - ./scripts:/scripts
-      - ./.venv/lib/python3.12/site-packages/pyspark/jars:/opt/spark-jars:ro
-    healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles: [ "hadoop" ]
-
-  nodemanager2:
-    <<: *hadoop-common
-    container_name: nodemanager2
-    hostname: nodemanager2
-    command: [ "yarn", "nodemanager" ]
-    depends_on:
-      resourcemanager:
-        condition: service_started
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./config/hadoop:/opt/hadoop/etc/hadoop
-      - ./scripts:/scripts
-      - ./.venv/lib/python3.12/site-packages/pyspark/jars:/opt/spark-jars:ro
-    healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q 'org.apache.hadoop.yarn.server.nodemanager.NodeManager'" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles: [ "hadoop" ]
-
   proxy:
     <<: *hadoop-common
     container_name: proxy
@@ -325,7 +255,7 @@ services:
       namenode:
         condition: service_started
     ports:
-      - "14000:14000" # Gateway HttpFS (WebHDFS REST) — o ÚNICO ponto de entrada HDFS que o Spark driver do host usa
+      - "14000:14000"
     command: [ "hdfs", "httpfs" ]
     healthcheck:
       test: [ "CMD-SHELL", "ps aux | grep -v grep | grep -q httpfs" ]
@@ -334,6 +264,31 @@ services:
       retries: 3
       start_period: 60s
     profiles: [ "hadoop" ]
+
+  spark-connect-hdfs:
+    <<: *spark-novol-common
+    container_name: spark-connect-hdfs
+    hostname: spark-connect-hdfs
+    command:
+      - /bin/bash
+      - -c
+      - >
+        curl -sL -o /opt/spark/jars/spark-connect_2.12-3.5.3.jar https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.3/spark-connect_2.12-3.5.3.jar && /opt/spark/bin/spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer --master spark://spark-master:7077 --conf spark.driver.host=spark-connect-hdfs --conf spark.connect.grpc.binding.port=15004 --conf spark.hadoop.fs.defaultFS=hdfs://namenode:8020 --conf spark.hadoop.dfs.client.use.datanode.hostname=true
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      namenode:
+        condition: service_started
+    ports:
+      - "15004:15004"
+      - "4042:4040"
+    profiles: [ "hadoop" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15004' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
 networks:
   labnet:

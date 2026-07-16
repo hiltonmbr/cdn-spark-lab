@@ -1,7 +1,7 @@
 [project]
 name = "cdn-spark-lab"
 version = "1.0.0"
-description = "Laboratório prático Apache Spark — do PySpark local aos clusters Standalone, YARN+HDFS e S3"
+description = "Laboratório prático Apache Spark — do PySpark local aos clusters Standalone, HDFS e S3"
 requires-python = ">=3.12"
 dependencies = [
     "jupyterlab>=4.1",
