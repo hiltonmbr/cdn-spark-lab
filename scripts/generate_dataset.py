@@ -60,6 +60,61 @@ CARGOS = list(CARGO_SALARIO_BASE.keys())
 DATA_ADMISSAO_START = "2015-01-01"
 DATA_ADMISSAO_END = "2026-07-01"
 
+AVALIACOES_SCALES = {
+    # (n_app, n_site, n_callcenter)
+    "small": (8_000, 4_000, 1_500),
+    "large": (80_000, 40_000, 15_000),
+}
+
+# Faixas de id_avaliacao não sobrepostas entre fontes — cada uma folgada o
+# suficiente para acomodar o scale "large" sem colidir com a próxima faixa.
+ID_AVALIACAO_OFFSET_APP = 0
+ID_AVALIACAO_OFFSET_SITE = 500_000
+ID_AVALIACAO_OFFSET_CALLCENTER = 900_000
+
+NOTA_PROBS = {1: 0.08, 2: 0.07, 3: 0.15, 4: 0.30, 5: 0.40}
+
+# Sem vírgula nem ponto-e-vírgula de propósito — o CSV do call center usa
+# vírgula como decimal em tempo_atendimento_min e ';' como delimitador; um
+# comentário com qualquer um dos dois quebraria a demonstração de "leitura
+# malfeita" do notebook 09 de forma inconsistente entre execuções.
+COMENTARIOS_POR_NOTA = {
+    5: [
+        "Atendimento excelente! Recomendo muito.",
+        "Superou minhas expectativas.",
+        "Entrega rápida e produto de qualidade.",
+        "Equipe muito atenciosa. Voltarei a comprar.",
+    ],
+    4: [
+        "Muito bom no geral. Só demorou um pouco.",
+        "Produto de qualidade e entrega no prazo.",
+        "Boa experiência no geral.",
+    ],
+    3: [
+        "Atendimento ok. Nada excepcional.",
+        "Cumpriu o combinado.",
+        "Dentro do esperado.",
+    ],
+    2: [
+        "Atendimento demorado.",
+        "Produto chegou com pequenos problemas.",
+        "Poderia ser melhor.",
+    ],
+    1: [
+        "Péssima experiência. Não recomendo.",
+        "Produto chegou com defeito.",
+        "Atendimento muito ruim.",
+    ],
+}
+
+DISPOSITIVOS_OS = ["Android", "iOS"]
+VERSOES_APP = ["4.8.0", "4.9.0", "4.9.1", "5.0.0"]
+
+# Mesmo intervalo temporal de `vendas`, para as avaliações fazerem sentido
+# cronologicamente ao lado das vendas já existentes.
+DATA_AVALIACAO_START = "2024-01-01"
+DATA_AVALIACAO_END = "2026-07-01"
+
 
 def generate_empresas(rng: np.random.Generator, fake: Faker) -> pd.DataFrame:
     return pd.DataFrame(
@@ -114,6 +169,96 @@ def generate_vendas(n: int, funcionarios: pd.DataFrame, rng: np.random.Generator
             "ano": anos.astype(np.int32),
             "mes": meses,
             "dia": dias,
+        }
+    )
+
+
+def _sample_avaliacoes_base(n: int, rng: np.random.Generator, id_start: int) -> dict:
+    """Amostra os campos comuns às 3 fontes de avaliacoes (nota, comentário
+    correlacionado à nota, empresa e data) — reaproveitado por cada gerador por
+    fonte para não triplicar a lógica de correlação nota<->comentário."""
+    notas = rng.choice(list(NOTA_PROBS.keys()), size=n, p=list(NOTA_PROBS.values()))
+    comentarios = np.array([rng.choice(COMENTARIOS_POR_NOTA[nota]) for nota in notas])
+    id_empresa = rng.integers(1, N_EMPRESAS + 1, size=n, dtype=np.int32)
+
+    start_epoch = pd.Timestamp(DATA_AVALIACAO_START).value // 10**9
+    end_epoch = pd.Timestamp(DATA_AVALIACAO_END).value // 10**9
+    data_epoch = rng.integers(start_epoch, end_epoch, size=n)
+
+    return {
+        "id_avaliacao": np.arange(id_start, id_start + n, dtype=np.int64),
+        "id_empresa": id_empresa,
+        "nota": notas.astype(np.int32),
+        "comentario": comentarios,
+        "data": pd.to_datetime(data_epoch, unit="s").normalize(),
+    }
+
+
+def generate_avaliacoes_app(n: int, rng: np.random.Generator) -> pd.DataFrame:
+    """Fonte 1: app mobile, exporta JSON Lines com metadados de dispositivo
+    aninhados. A versão "4.9.1" tem um bug proposital que puxa a nota pra
+    baixo — dá um achado real de negócio para o notebook 09 descobrir."""
+    base = _sample_avaliacoes_base(n, rng, id_start=ID_AVALIACAO_OFFSET_APP + 1)
+    dispositivo_os = rng.choice(DISPOSITIVOS_OS, size=n)
+    versao_app = rng.choice(VERSOES_APP, size=n, p=[0.15, 0.20, 0.25, 0.40])
+
+    is_buggy_version = versao_app == "4.9.1"
+    notas_bugadas = rng.choice([1, 2], size=n, p=[0.6, 0.4])
+    comentarios_bugados = np.array([rng.choice(COMENTARIOS_POR_NOTA[1]) for _ in range(n)])
+    nota_final = np.where(is_buggy_version, notas_bugadas, base["nota"]).astype(np.int32)
+    comentario_final = np.where(is_buggy_version, comentarios_bugados, base["comentario"])
+
+    return pd.DataFrame(
+        {
+            "id_avaliacao": base["id_avaliacao"],
+            "id_empresa": base["id_empresa"],
+            "canal": "App",
+            "nota": nota_final,
+            "comentario": comentario_final,
+            "data": base["data"],
+            "dispositivo": [
+                {"os": os_, "versao_app": versao}
+                for os_, versao in zip(dispositivo_os, versao_app)
+            ],
+        }
+    )
+
+
+def generate_avaliacoes_site(n: int, rng: np.random.Generator) -> pd.DataFrame:
+    """Fonte 2: site institucional, exporta CSV limpo — UTF-8, vírgula, header,
+    datas ISO. O "caminho feliz" do CSV."""
+    base = _sample_avaliacoes_base(n, rng, id_start=ID_AVALIACAO_OFFSET_SITE + 1)
+    return pd.DataFrame(
+        {
+            "id_avaliacao": base["id_avaliacao"],
+            "id_empresa": base["id_empresa"],
+            "canal": "Site",
+            "nota": base["nota"],
+            "comentario": base["comentario"],
+            "data": base["data"],
+        }
+    )
+
+
+def generate_avaliacoes_callcenter(n: int, rng: np.random.Generator) -> pd.DataFrame:
+    """Fonte 3: call center legado, exporta CSV no estilo "planilha
+    brasileira" (separador ';', decimal ',', encoding Latin-1 — ver
+    write_avaliacoes_callcenter). tempo_atendimento_min é negativamente
+    correlacionado com nota — atendimentos mais demorados tendem a gerar
+    avaliações piores."""
+    base = _sample_avaliacoes_base(n, rng, id_start=ID_AVALIACAO_OFFSET_CALLCENTER + 1)
+    tempo_base = 30 - (base["nota"] * 4)  # nota 1 -> ~26min; nota 5 -> ~10min
+    tempo_atendimento = np.round(np.clip(tempo_base + rng.normal(0, 5, size=n), 2, None), 1)
+
+    return pd.DataFrame(
+        {
+            "id_avaliacao": base["id_avaliacao"],
+            "id_empresa": base["id_empresa"],
+            "canal": "Call Center",
+            "nota": base["nota"],
+            "comentario": base["comentario"],
+            "data": base["data"],
+            "tempo_atendimento_min": tempo_atendimento,
         }
     )
 
