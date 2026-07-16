@@ -204,7 +204,9 @@ def generate_avaliacoes_app(n: int, rng: np.random.Generator) -> pd.DataFrame:
 
     is_buggy_version = versao_app == "4.9.1"
     notas_bugadas = rng.choice([1, 2], size=n, p=[0.6, 0.4])
-    comentarios_bugados = np.array([rng.choice(COMENTARIOS_POR_NOTA[1]) for _ in range(n)])
+    comentarios_bugados = np.array(
+        [rng.choice(COMENTARIOS_POR_NOTA[nota]) for nota in notas_bugadas]
+    )
     nota_final = np.where(is_buggy_version, notas_bugadas, base["nota"]).astype(np.int32)
     comentario_final = np.where(is_buggy_version, comentarios_bugados, base["comentario"])
 
