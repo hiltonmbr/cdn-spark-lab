@@ -1,7 +1,8 @@
 # ⚡ cdn-spark-lab: Apache Spark, Do Laptop ao Cluster
 
 ### **O Guia Prático de Processamento Distribuído de Dados**
-Veja o *mesmo* pipeline Bronze→Silver→Gold rodar em 4 infraestruturas crescentes — processo local, cluster Spark Standalone, HDFS e armazenamento de objetos compatível com S3 — com o Spark como o motor constante. Tese central: **Spark não substitui armazenamento, ele substitui o MapReduce.**
+
+Veja o _mesmo_ pipeline Bronze→Silver→Gold rodar em 4 infraestruturas crescentes — processo local, cluster Spark Standalone, HDFS e armazenamento de objetos compatível com S3 — com o Spark como o motor constante. Tese central: **Spark não substitui armazenamento, ele substitui o MapReduce.**
 
 ![Docker](https://img.shields.io/badge/Docker-27.x-2496ED?logo=docker&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Compose-v2-2496ED?logo=docker&logoColor=white)
@@ -19,7 +20,7 @@ Veja o *mesmo* pipeline Bronze→Silver→Gold rodar em 4 infraestruturas cresce
 Um **laboratório prático** construído em torno de uma única pergunta: o que realmente muda quando você migra um job Spark do seu laptop para um cluster real? Em vez de 4 demonstrações desconectadas, este laboratório executa o **mesmo pipeline e a mesma agregação Gold** em 4 arquiteturas progressivamente mais realistas, para que as diferenças que você vê sejam reais, não acidentais.
 
 - 📖 **8 módulos teóricos** — limites do MapReduce, RDDs/linhagem, DAG e avaliação lazy, DataFrames/Catalyst/Tungsten, internals do PySpark, caching/AQE, Spark+HDFS, Spark+Armazenamento de Objetos.
-- 💻 **13 laboratórios interativos (00–11)** — começando com 4 labs PySpark com sabor de negócios (`local[*]`, sem Docker), depois labs Spark Connect, S3 e HDFS.
+- 💻 **12 laboratórios interativos (00–11)** — começando com labs PySpark locais (`local[*]`, sem Docker), depois labs Spark Connect em cluster, S3 e HDFS.
 - 🏗️ **Um `docker-compose.yml`, três perfis** — `cluster` (Spark Standalone + Spark Connect na porta 15002), `s3` (RustFS + Spark Connect S3 na porta 15003), `hadoop` (HDFS + Spark Connect HDFS na porta 15004). Profiles `s3` e `hadoop` reutilizam o mesmo master/workers do `cluster`. Sem YARN.
 - 🧬 **Dataset sintético de negócios, reproduzível** — `empresas`/`funcionarios`/`vendas`, Faker + NumPy, semente fixa, gerado sob demanda nas escalas `small` ou `large` — zero dependência de internet.
 - 🏁 **Um benchmark de encerramento** — a mesma agregação Gold (vendas por setor/mês, broadcast join) medida nas arquiteturas lado a lado.
@@ -30,12 +31,12 @@ Um **laboratório prático** construído em torno de uma única pergunta: o que 
 
 ## 🧭 Os 4 Casos
 
-| Caso | Conexão | Gerenciador de cluster | Armazenamento |
-|---|---|---|---|
-| **A — Local** | `local[*]` embutido | Nenhum (processo único) | Disco local |
-| **B — Cluster** | `sc://localhost:15002` | Spark Standalone (Docker) | Volume Docker `/data` |
-| **C — HDFS** | `sc://localhost:15004` | Spark Standalone (Docker) | HDFS `hdfs://namenode:8020` |
-| **D — Object Storage** | `sc://localhost:15003` | Spark Standalone (Docker) | RustFS `s3a://` |
+| Caso                   | Conexão                | Gerenciador de cluster    | Armazenamento               |
+| ---------------------- | ---------------------- | ------------------------- | --------------------------- |
+| **A — Local**          | `local[*]` embutido    | Nenhum (processo único)   | Disco local                 |
+| **B — Cluster**        | `sc://localhost:15002` | Spark Standalone (Docker) | Volume Docker `/data`       |
+| **C — HDFS**           | `sc://localhost:15004` | Spark Standalone (Docker) | HDFS `hdfs://namenode:8020` |
+| **D — Object Storage** | `sc://localhost:15003` | Spark Standalone (Docker) | RustFS `s3a://`             |
 
 O cluster Spark (master + 2 workers) é o **mesmo** para B, C e D — o que muda é o Spark Connect server que você escolhe conectar. Cada um carrega confs diferentes (volume local / HDFS / S3A). O fluxo do cliente é sempre `make setup-env` → `make jupyter`.
 
@@ -74,18 +75,20 @@ make down     # Para tudo
 
 Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PySpark e Docker estão prontos antes de cada nível.
 
+Os Labs 00 e 02–05 (Caso A) não precisam de nada além disso — sem Docker necessário. O Lab 01 (Conexões com Spark) roda a maior parte sem Docker, mas tem uma seção opcional de comparação com o modo cluster que exige `make spark`.
+
 ---
 
 ## ⚙️ Pré-requisitos
 
-| Requisito | Detalhes |
-|---|---|
-| **Docker Engine** | Necessário para Casos B, C, D (Caso A roda sem Docker algum) |
-| **Docker Compose** | Embutido no Docker Desktop |
-| **uv** | Gerenciador de pacotes Python rápido ([Instalação](https://docs.astral.sh/uv/getting-started/installation/)) |
-| **Make** | Usado em todos atalhos abaixo (opcional — veja o [Makefile](Makefile) para os comandos brutos) |
-| **Recursos** | ~4 GB RAM para perfis `cluster`/`s3`; **8 GB recomendados** para o perfil `hadoop` (~7 serviços) |
-| **Disco** | Alguns GB livres para a escala `large` do dataset e replicação HDFS |
+| Requisito          | Detalhes                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Docker Engine**  | Necessário para Casos B, C, D (Caso A roda sem Docker algum)                                                 |
+| **Docker Compose** | Embutido no Docker Desktop                                                                                   |
+| **uv**             | Gerenciador de pacotes Python rápido ([Instalação](https://docs.astral.sh/uv/getting-started/installation/)) |
+| **Make**           | Usado em todos atalhos abaixo (opcional — veja o [Makefile](Makefile) para os comandos brutos)               |
+| **Recursos**       | ~4 GB RAM para perfis `cluster`/`s3`; **8 GB recomendados** para o perfil `hadoop` (~7 serviços)             |
+| **Disco**          | Alguns GB livres para a escala `large` do dataset e replicação HDFS                                          |
 
 ```bash
 docker version && docker compose version && uv --version
@@ -97,33 +100,33 @@ docker version && docker compose version && uv --version
 
 ### 📖 Teoria
 
-| # | Módulo | Antecede |
-|:---:|---|:---:|
-| 1 | [Do MapReduce ao Spark](docs/01-do-mapreduce-ao-spark.md) | Nível A |
-| 2 | [RDDs, Linhagem & Particionamento](docs/02-rdds-linhagem-particoes.md) | Nível A |
-| 3 | [Transformações, Ações & o DAG](docs/03-transformacoes-acoes-dag.md) | Nível B |
-| 4 | [DataFrames, Spark SQL, Catalyst & Tungsten](docs/04-dataframes-catalyst-tungsten.md) | Nível B |
-| 5 | [PySpark na Prática](docs/05-pyspark-na-pratica.md) | Nível B |
-| 6 | [Persistência & Otimização](docs/06-persistencia-e-otimizacao.md) | Nível B |
-| 7 | [Spark + HDFS](docs/07-spark-e-hdfs.md) | Nível C |
-| 8 | [Spark + Armazenamento de Objetos](docs/08-spark-e-armazenamento-objetos.md) | Nível D |
+|  #  | Módulo                                                                                | Antecede |
+| :-: | ------------------------------------------------------------------------------------- | :------: |
+|  1  | [Do MapReduce ao Spark](docs/01-do-mapreduce-ao-spark.md)                             | Nível A  |
+|  2  | [RDDs, Linhagem & Particionamento](docs/02-rdds-linhagem-particoes.md)                | Nível A  |
+|  3  | [Transformações, Ações & o DAG](docs/03-transformacoes-acoes-dag.md)                  | Nível B  |
+|  4  | [DataFrames, Spark SQL, Catalyst & Tungsten](docs/04-dataframes-catalyst-tungsten.md) | Nível B  |
+|  5  | [PySpark na Prática](docs/05-pyspark-na-pratica.md)                                   | Nível B  |
+|  6  | [Persistência & Otimização](docs/06-persistencia-e-otimizacao.md)                     | Nível B  |
+|  7  | [Spark + HDFS](docs/07-spark-e-hdfs.md)                                               | Nível C  |
+|  8  | [Spark + Armazenamento de Objetos](docs/08-spark-e-armazenamento-objetos.md)          | Nível D  |
 
 ### 🧪 Laboratórios Práticos
 
-| # | Nível | Notebook | Foco |
-|:---:|:---:|---|---|
-| 00 | — | [Setup Check](notebooks/00_setup_check.ipynb) | Valida Python, pyspark, Docker por nível |
-| 01 | A · Local | [Primeiros Passos com PySpark](notebooks/01_primeiros_passos_pyspark.ipynb) | `select`, `filter`, `withColumn`, `show`/`collect`/`toPandas` |
-| 02 | A · Local | [Agregações de Negócio](notebooks/02_agregacoes_de_negocio.ipynb) | `groupBy`/`agg`/`orderBy` |
-| 03 | A · Local | [Joins: Vendas + Funcionários + Empresas](notebooks/03_joins_vendas_funcionarios_empresas.ipynb) | Ranking, receita por setor, joins encadeados |
-| 04 | A · Local | [Por Trás dos Panos](notebooks/04_por_tras_dos_panos.ipynb) | Linhagem RDD, DAG, plano Catalyst, Spark SQL |
-| 05 | B · Cluster | [Spark Connect](notebooks/05_spark_connect.ipynb) | Cluster Standalone, thin client, Spark UI |
-| 06 | B · Cluster | [Shuffle, Broadcast Join](notebooks/06_shuffle_broadcast_join.ipynb) | Broadcast vs shuffle join |
-| 07 | B · Cluster | [Cache & Storage Levels](notebooks/07_cache_storage_levels.ipynb) | persist/unpersist, AQE |
-| 08 | B · Cluster | [Múltiplos Formatos](notebooks/08_multiplos_formatos_arquivo.ipynb) | CSV, JSON, Parquet, Bronze→Silver |
-| 10 | D · S3 | [Spark + S3 (RustFS)](notebooks/10_spark_s3_datalake.ipynb) | Datalake em S3 object store, Spark Connect s3 |
-| 11 | C · HDFS | [Spark + HDFS](notebooks/11_spark_hdfs_datalake.ipynb) | Datalake em HDFS via Spark Connect |
-| 13 | Capstone | 🏁 Benchmark | Mesmo job Gold nas 4 arquiteturas |
+|  #  |    Nível    | Notebook                                                                                         | Foco                                                                         |
+| :-: | :---------: | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| 00  |      —      | [Setup Check](notebooks/00_setup_check.ipynb)                                                    | Valida Python, pyspark, Docker por nível                                     |
+| 01  |    A → C    | [Conexões com Spark](notebooks/01_conexoes_spark.ipynb)                                          | `local[*]` vs Spark Connect vs conexão clássica ao master vs HDFS (panorama) |
+| 02  |  A · Local  | [Primeiros Passos com PySpark](notebooks/02_primeiros_passos_pyspark.ipynb)                      | `select`, `filter`, `withColumn`, `show`/`collect`/`toPandas`                |
+| 03  |  A · Local  | [Agregações de Negócio](notebooks/03_agregacoes_de_negocio.ipynb)                                | `groupBy`/`agg`/`orderBy`                                                    |
+| 04  |  A · Local  | [Joins: Vendas + Funcionários + Empresas](notebooks/04_joins_vendas_funcionarios_empresas.ipynb) | Ranking, receita por setor, joins encadeados                                 |
+| 05  |  A · Local  | [Por Trás dos Panos](notebooks/05_por_tras_dos_panos.ipynb)                                      | Linhagem RDD, DAG, plano Catalyst, Spark SQL                                 |
+| 06  | B · Cluster | [Spark Cluster (Spark Connect)](notebooks/06_spark_cluster.ipynb)                                | Cluster Standalone, thin client, Spark UI                                    |
+| 07  | B · Cluster | [Shuffle, Broadcast Join](notebooks/07_shuffle_broadcast_join.ipynb)                             | Broadcast vs shuffle join                                                    |
+| 08  | B · Cluster | [Cache & Storage Levels](notebooks/08_cache_storage_levels.ipynb)                                | persist/unpersist, AQE                                                       |
+| 09  | B · Cluster | [Múltiplos Formatos](notebooks/09_multiplos_formatos_arquivo.ipynb)                              | CSV, JSON, Parquet, Bronze→Silver                                            |
+| 10  |   D · S3    | [Spark + S3 (RustFS)](notebooks/10_spark_s3_datalake.ipynb)                                      | Datalake em S3 object store, Spark Connect s3                                |
+| 11  |  C · HDFS   | [Spark + HDFS](notebooks/11_spark_hdfs_datalake.ipynb)                                           | Datalake em HDFS via Spark Connect                                           |
 
 ---
 
