@@ -293,6 +293,45 @@ def write_bronze(df: pd.DataFrame, name: str, partition_cols: list[str] | None =
     return out_dir
 
 
+def write_avaliacoes_app(df: pd.DataFrame) -> Path:
+    """Escreve como JSON Lines (um objeto por linha) — inclui o campo aninhado
+    'dispositivo' como um objeto JSON dentro de cada linha."""
+    out_dir = DATA_DIR / "bronze" / "avaliacoes_app"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_df = df.copy()
+    out_df["data"] = pd.to_datetime(out_df["data"]).dt.strftime("%Y-%m-%d")
+    out_df.to_json(out_dir / "part-000.jsonl", orient="records", lines=True, force_ascii=False)
+    return out_dir
+
+
+def write_avaliacoes_site(df: pd.DataFrame) -> Path:
+    """Escreve como CSV limpo: UTF-8, vírgula, header, data ISO — o "caminho
+    feliz" que o notebook 09 usa como contraste para o CSV legado do call
+    center."""
+    out_dir = DATA_DIR / "bronze" / "avaliacoes_site"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_df = df.copy()
+    out_df["data"] = pd.to_datetime(out_df["data"]).dt.strftime("%Y-%m-%d")
+    out_df.to_csv(out_dir / "part-000.csv", index=False)
+    return out_dir
+
+
+def write_avaliacoes_callcenter(df: pd.DataFrame) -> Path:
+    """Escreve como CSV no estilo "planilha brasileira" de sistema legado:
+    separador ';' (a vírgula já é o decimal em pt-BR), encoding Latin-1
+    (ISO-8859-1), datas dd/mm/aaaa. Proposital — é a "pegadinha" de leitura
+    que o notebook 09 usa para ensinar as opções corretas de spark.read.csv."""
+    out_dir = DATA_DIR / "bronze" / "avaliacoes_callcenter"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_df = df.copy()
+    out_df["data"] = pd.to_datetime(out_df["data"]).dt.strftime("%d/%m/%Y")
+    out_df.to_csv(
+        out_dir / "part-000.csv", index=False,
+        sep=";", encoding="latin-1", decimal=",",
+    )
+    return out_dir
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scale", choices=SCALES.keys(), default="small")

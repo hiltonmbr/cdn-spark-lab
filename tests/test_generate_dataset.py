@@ -1,5 +1,7 @@
 """Testes unitários para scripts/generate_dataset.py — sem necessidade de Docker."""
 
+import json
+import re
 import sys
 
 import numpy as np
@@ -74,3 +76,44 @@ def test_nenhum_comentario_contem_virgula_ou_ponto_e_virgula():
         for comentario in comentarios:
             assert "," not in comentario
             assert ";" not in comentario
+
+
+def test_write_avaliacoes_app_produz_jsonl_valido_com_dispositivo_aninhado(tmp_path, monkeypatch):
+    monkeypatch.setattr(generate_dataset, "DATA_DIR", tmp_path)
+    rng = np.random.default_rng(42)
+    df = generate_dataset.generate_avaliacoes_app(10, rng)
+
+    out_dir = generate_dataset.write_avaliacoes_app(df)
+    linhas = (out_dir / "part-000.jsonl").read_text(encoding="utf-8").splitlines()
+
+    assert len(linhas) == 10
+    primeiro = json.loads(linhas[0])
+    assert set(primeiro["dispositivo"].keys()) == {"os", "versao_app"}
+    assert primeiro["data"] == df["data"].iloc[0].strftime("%Y-%m-%d")
+
+
+def test_write_avaliacoes_site_produz_csv_utf8_com_virgula(tmp_path, monkeypatch):
+    monkeypatch.setattr(generate_dataset, "DATA_DIR", tmp_path)
+    rng = np.random.default_rng(42)
+    df = generate_dataset.generate_avaliacoes_site(10, rng)
+
+    out_dir = generate_dataset.write_avaliacoes_site(df)
+    conteudo = (out_dir / "part-000.csv").read_text(encoding="utf-8")
+
+    primeira_linha = conteudo.splitlines()[0]
+    assert primeira_linha == "id_avaliacao,id_empresa,canal,nota,comentario,data"
+
+
+def test_write_avaliacoes_callcenter_produz_csv_legado_ponto_e_virgula_latin1(tmp_path, monkeypatch):
+    monkeypatch.setattr(generate_dataset, "DATA_DIR", tmp_path)
+    rng = np.random.default_rng(42)
+    df = generate_dataset.generate_avaliacoes_callcenter(10, rng)
+
+    out_dir = generate_dataset.write_avaliacoes_callcenter(df)
+    conteudo = (out_dir / "part-000.csv").read_text(encoding="latin-1")
+    linhas = conteudo.splitlines()
+
+    assert linhas[0] == "id_avaliacao;id_empresa;canal;nota;comentario;data;tempo_atendimento_min"
+    campos = linhas[1].split(";")
+    assert "," in campos[-1]  # decimal com vírgula em tempo_atendimento_min
+    assert re.match(r"^\d{2}/\d{2}/\d{4}$", campos[5])  # data em dd/mm/aaaa, não ISO
