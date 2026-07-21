@@ -19,8 +19,8 @@ Veja o _mesmo_ pipeline Bronze→Silver→Gold rodar em 4 infraestruturas cresce
 
 Um **laboratório prático** construído em torno de uma única pergunta: o que realmente muda quando você migra um job Spark do seu laptop para um cluster real? Em vez de 4 demonstrações desconectadas, este laboratório executa o **mesmo pipeline e a mesma agregação Gold** em 4 arquiteturas progressivamente mais realistas, para que as diferenças que você vê sejam reais, não acidentais.
 
-- 📖 **8 módulos teóricos** — limites do MapReduce, RDDs/linhagem, DAG e avaliação lazy, DataFrames/Catalyst/Tungsten, internals do PySpark, caching/AQE, Spark+HDFS, Spark+Armazenamento de Objetos.
-- 💻 **12 laboratórios interativos (00–11)** — começando com labs PySpark locais (`local[*]`, sem Docker), depois labs Spark Connect em cluster, S3 e HDFS.
+- 📖 **9 módulos teóricos** — limites do MapReduce, RDDs/linhagem, DAG e avaliação lazy, DataFrames/Catalyst/Tungsten, internals do PySpark, caching/AQE, Spark+HDFS, Spark+Armazenamento de Objetos, Spark Structured Streaming.
+- 💻 **13 laboratórios interativos (00–12)** — começando com labs PySpark locais (`local[*]`, sem Docker), depois labs Spark Connect em cluster, S3 e HDFS, e fechando com um capstone de Structured Streaming (janelas, watermarks) local.
 - 🏗️ **Um `docker-compose.yml`, três perfis** — `cluster` (Spark Standalone + Spark Connect na porta 15002), `s3` (RustFS + Spark Connect S3 na porta 15003), `hadoop` (HDFS + Spark Connect HDFS na porta 15004). Profiles `s3` e `hadoop` reutilizam o mesmo master/workers do `cluster`. Sem YARN.
 - 🧬 **Dataset sintético de negócios, reproduzível** — `empresas`/`funcionarios`/`vendas`, Faker + NumPy, semente fixa, gerado sob demanda nas escalas `small` ou `large` — zero dependência de internet.
 - 🏁 **Um benchmark de encerramento** — a mesma agregação Gold (vendas por setor/mês, broadcast join) medida nas arquiteturas lado a lado.
@@ -75,7 +75,7 @@ make down     # Para tudo
 
 Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PySpark e Docker estão prontos antes de cada nível.
 
-Os Labs 00 e 02–05 (Caso A) não precisam de nada além disso — sem Docker necessário. O Lab 01 (Conexões com Spark) roda a maior parte sem Docker, mas tem uma seção opcional de comparação com o modo cluster que exige `make spark`.
+Os Labs 00 e 02–05 (Caso A) não precisam de nada além disso — sem Docker necessário. O Lab 01 (Conexões com Spark) roda a maior parte sem Docker, mas tem uma seção opcional de comparação com o modo cluster que exige `make spark`. O Lab 12 (Structured Streaming) também roda em `local[*]`, sem Docker — é um módulo extra, fora da matriz dos 4 Casos, sobre janelas e watermarks em streaming.
 
 ---
 
@@ -110,6 +110,7 @@ docker version && docker compose version && uv --version
 |  6  | [Persistência & Otimização](docs/06-persistencia-e-otimizacao.md)                     | Nível B  |
 |  7  | [Spark + HDFS](docs/07-spark-e-hdfs.md)                                               | Nível C  |
 |  8  | [Spark + Armazenamento de Objetos](docs/08-spark-e-armazenamento-objetos.md)          | Nível D  |
+|  9  | [Spark Structured Streaming](docs/09-spark-streaming.md)                             |  Extra   |
 
 ### 🧪 Laboratórios Práticos
 
@@ -127,6 +128,7 @@ docker version && docker compose version && uv --version
 | 09  | B · Cluster | [Múltiplos Formatos](notebooks/09_multiplos_formatos_arquivo.ipynb)                              | CSV, JSON, Parquet, Bronze→Silver                                            |
 | 10  |   D · S3    | [Spark + S3 (RustFS)](notebooks/10_spark_s3_datalake.ipynb)                                      | Datalake em S3 object store, Spark Connect s3                                |
 | 11  |  C · HDFS   | [Spark + HDFS](notebooks/11_spark_hdfs_datalake.ipynb)                                           | Datalake em HDFS via Spark Connect                                           |
+| 12  | Extra · Local | [Spark Structured Streaming](notebooks/12_spark_streaming.ipynb)                               | Tumbling/sliding/session windows, watermarks — file source simulando Kafka   |
 
 ---
 
@@ -134,8 +136,8 @@ docker version && docker compose version && uv --version
 
 ```
 cdn-spark-lab/
-├── docs/                      # 8 módulos teóricos
-├── notebooks/                 # 12 laboratórios (00-11)
+├── docs/                      # 9 módulos teóricos
+├── notebooks/                 # 13 laboratórios (00-12)
 ├── scripts/
 │   ├── lab_utils.py           # Fábrica de SparkSession + helpers bronze/silver/gold + benchmark
 │   ├── generate_dataset.py    # Gerador de dataset sintético (Faker + NumPy, semente fixa)
@@ -263,3 +265,5 @@ Este projeto é disponibilizado sob a [Licença MIT](LICENSE).
 - [WebHDFS REST API](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/WebHDFS.html)
 - [Módulo Hadoop-AWS (`s3a://`)](https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/index.html)
 - [Documentação Oficial do RustFS](https://docs.rustfs.com)
+- [Structured Streaming Programming Guide](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
+- [Structured Streaming + Kafka Integration Guide](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)
