@@ -161,7 +161,7 @@ services:
       sh -c " chown -R 10001:10001 /drives/0 && chown -R 10001:10001 /drives/1 && chown -R 10001:10001 /drives/2 && chown -R 10001:10001 /drives/3 && echo 'Permissions set for all 4 drives.' "
 
   rustfs-server:
-    image: rustfs/rustfs:1.0.0-beta.8
+    image: rustfs/rustfs:1.0.0-beta.11
     container_name: rustfs-server
     hostname: rustfs-server
     command: /data/drive0 /data/drive1 /data/drive2 /data/drive3
