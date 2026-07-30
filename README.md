@@ -20,7 +20,7 @@ Veja o _mesmo_ pipeline Bronze→Silver→Gold rodar em 4 infraestruturas cresce
 Um **laboratório prático** construído em torno de uma única pergunta: o que realmente muda quando você migra um job Spark do seu laptop para um cluster real? Em vez de 4 demonstrações desconectadas, este laboratório executa o **mesmo pipeline e a mesma agregação Gold** em 4 arquiteturas progressivamente mais realistas, para que as diferenças que você vê sejam reais, não acidentais.
 
 - 📖 **9 módulos teóricos** — limites do MapReduce, RDDs/linhagem, DAG e avaliação lazy, DataFrames/Catalyst/Tungsten, internals do PySpark, caching/AQE, Spark+HDFS, Spark+Armazenamento de Objetos, Spark Structured Streaming.
-- 💻 **15 laboratórios interativos (00–14)** — começando com labs PySpark locais (`local[*]`, sem Docker), depois labs Spark Connect em cluster, S3 e HDFS, e fechando com três capstones de Structured Streaming local: janelas/watermarks, agregações estatísticas em CSV, e um pipeline de preço médio de NFe com estado (`applyInPandasWithState`) e sink Parquet.
+- 💻 **17 laboratórios interativos (00–16)** — começando com labs PySpark locais (`local[*]`, sem Docker), depois labs Spark Connect em cluster, S3 e HDFS, três capstones de Structured Streaming local (janelas/watermarks, agregações estatísticas em CSV, e um pipeline de preço médio de NFe com estado via `applyInPandasWithState` e sink Parquet), e fechando com Spark MLlib: três problemas de negócio (classificação, regressão, clustering) sobre o mesmo dataset do curso, mais um capstone que aplica o modelo treinado dentro de um stream.
 - 🏗️ **Um `docker-compose.yml`, três perfis** — `cluster` (Spark Standalone + Spark Connect na porta 15002), `s3` (RustFS + Spark Connect S3 na porta 15003), `hadoop` (HDFS + Spark Connect HDFS na porta 15004). Profiles `s3` e `hadoop` reutilizam o mesmo master/workers do `cluster`. Sem YARN.
 - 🧬 **Dataset sintético de negócios, reproduzível** — `empresas`/`funcionarios`/`vendas`, Faker + NumPy, semente fixa, gerado sob demanda nas escalas `small` ou `large` — zero dependência de internet.
 - 🏁 **Um benchmark de encerramento** — a mesma agregação Gold (vendas por setor/mês, broadcast join) medida nas arquiteturas lado a lado.
@@ -75,7 +75,7 @@ make down     # Para tudo
 
 Execute `notebooks/00_setup_check.ipynb` primeiro para confirmar que Python, PySpark e Docker estão prontos antes de cada nível.
 
-Os Labs 00 e 02–05 (Caso A) não precisam de nada além disso — sem Docker necessário. O Lab 01 (Conexões com Spark) roda a maior parte sem Docker, mas tem uma seção opcional de comparação com o modo cluster que exige `make spark`. Os Labs 12–14 (Structured Streaming) também rodam em `local[*]`, sem Docker — são módulos extras, fora da matriz dos 4 Casos: janelas/watermarks (12), agregações estatísticas sobre CSV (13), e um pipeline de preço médio de NFe com estado e sink Parquet (14).
+Os Labs 00 e 02–05 (Caso A) não precisam de nada além disso — sem Docker necessário. O Lab 01 (Conexões com Spark) roda a maior parte sem Docker, mas tem uma seção opcional de comparação com o modo cluster que exige `make spark`. Os Labs 12–16 também rodam em `local[*]`, sem Docker — são módulos extras, fora da matriz dos 4 Casos: janelas/watermarks (12), agregações estatísticas sobre CSV (13), um pipeline de preço médio de NFe com estado e sink Parquet (14), Spark MLlib com três problemas de negócio (15) e um capstone de scoring em tempo real que aplica o modelo treinado no 15 dentro de um stream (16).
 
 ---
 
@@ -131,6 +131,8 @@ docker version && docker compose version && uv --version
 | 12  | Extra · Local | [Spark Structured Streaming](notebooks/12_spark_streaming.ipynb)                               | Tumbling/sliding/session windows, watermarks — file source simulando Kafka   |
 | 13  | Extra · Local | [Streaming CSV + Agregações Estatísticas](notebooks/13_spark_streaming.ipynb)                   | File source em CSV, estatística descritiva por janela, percentis (`percentile_approx`) |
 | 14  | Extra · Local | [Preço Médio Ponderado de NFe](notebooks/14_spark_streaming.ipynb)                              | Join stream-static, quarentena, `applyInPandasWithState`, `GroupStateTimeout`, sink Parquet |
+| 15  | Extra · Local | [Spark MLlib](notebooks/15_spark_ml.ipynb)                                                       | Pipeline/Transformer/Estimator, classificação, regressão regularizada, clustering, `CrossValidator` |
+| 16  | Extra · Local | [Spark ML + Streaming](notebooks/16_spark_ml_streaming_scoring.ipynb)                            | `PipelineModel` treinado no 15 aplicado dentro de um `readStream`, fila de alertas em Gold |
 
 ---
 
@@ -139,7 +141,7 @@ docker version && docker compose version && uv --version
 ```
 cdn-spark-lab/
 ├── docs/                      # 9 módulos teóricos
-├── notebooks/                 # 15 laboratórios (00-14)
+├── notebooks/                 # 17 laboratórios (00-16)
 ├── scripts/
 │   ├── lab_utils.py           # Fábrica de SparkSession + helpers bronze/silver/gold + benchmark
 │   ├── generate_dataset.py    # Gerador de dataset sintético (Faker + NumPy, semente fixa)
